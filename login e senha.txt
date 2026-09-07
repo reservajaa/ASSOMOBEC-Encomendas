@@ -1,0 +1,2 @@
+login: admin.assomobec
+senha: ASSOMOBEC@Admin2026!
