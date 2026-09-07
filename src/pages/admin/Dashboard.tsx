@@ -37,40 +37,14 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Painel Administrativo</h1>
         <p className="text-gray-500">Resumo do controle de encomendas</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          title="Total Registradas" 
-          value={stats.total} 
-          icon={<PackageIcon size={24} className="text-blue-600" />} 
-          bg="bg-blue-50" 
-        />
-        <StatCard 
-          title="Disponíveis (Pendentes)" 
-          value={stats.pending} 
-          icon={<Clock size={24} className="text-orange-600" />} 
-          bg="bg-orange-50" 
-        />
-        <StatCard 
-          title="Entregues" 
-          value={stats.delivered} 
-          icon={<CheckCircle2 size={24} className="text-emerald-600" />} 
-          bg="bg-emerald-50" 
-        />
-        <StatCard 
-          title="Moradores com Encomenda" 
-          value={stats.residentsWithPackages} 
-          icon={<Users size={24} className="text-purple-600" />} 
-          bg="bg-purple-50" 
-        />
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      {/* Ações Rápidas: no celular (mobile) fica logo abaixo do título (order-1), no desktop fica após as estatísticas (md:order-2) */}
+      <div className="order-1 md:order-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-gray-800">Ações Rápidas</h2>
           <div className="hidden sm:flex gap-4 text-xs font-bold text-gray-400">
@@ -104,6 +78,34 @@ export default function Dashboard() {
              </div>
           </Link>
         </div>
+      </div>
+
+      {/* Cards de Estatísticas: no celular fica abaixo das ações rápidas (order-2), no desktop fica antes (md:order-1) */}
+      <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard 
+          title="Total Registradas" 
+          value={stats.total} 
+          icon={<PackageIcon size={24} className="text-blue-600" />} 
+          bg="bg-blue-50" 
+        />
+        <StatCard 
+          title="Disponíveis (Pendentes)" 
+          value={stats.pending} 
+          icon={<Clock size={24} className="text-orange-600" />} 
+          bg="bg-orange-50" 
+        />
+        <StatCard 
+          title="Entregues" 
+          value={stats.delivered} 
+          icon={<CheckCircle2 size={24} className="text-emerald-600" />} 
+          bg="bg-emerald-50" 
+        />
+        <StatCard 
+          title="Moradores com Encomenda" 
+          value={stats.residentsWithPackages} 
+          icon={<Users size={24} className="text-purple-600" />} 
+          bg="bg-purple-50" 
+        />
       </div>
     </div>
   );
