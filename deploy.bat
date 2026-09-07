@@ -10,7 +10,8 @@ echo   ASSOMOBEC - Deploy para GitHub
 echo  ==========================================
 echo.
 
-cd /d "C:\Projetos\Projeto-ASSOMOBEC-Encomendas"
+:: Entrar na pasta onde o script deploy.bat esta localizado
+cd /d "%~dp0"
 
 :: Verificar se git existe
 git --version >nul 2>&1
@@ -51,8 +52,12 @@ echo.
 
 :: Usar mensagem automatica se nao digitar nada
 if "%MSG%"=="" (
-    for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set DATETIME=%%I
-    set MSG=Atualizacao %DATETIME:~0,4%-%DATETIME:~4,2%-%DATETIME:~6,2% %DATETIME:~8,2%:%DATETIME:~10,2%
+    for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value 2^>nul') do set DATETIME=%%I
+    if defined DATETIME (
+        set MSG=Atualizacao %DATETIME:~0,4%-%DATETIME:~4,2%-%DATETIME:~6,2% %DATETIME:~8,2%:%DATETIME:~10,2%
+    ) else (
+        set MSG=Atualizacao automatica
+    )
 )
 
 echo  [1/3] Adicionando arquivos alterados...
