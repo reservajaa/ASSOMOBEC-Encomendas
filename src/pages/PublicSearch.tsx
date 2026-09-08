@@ -492,161 +492,201 @@ export default function PublicSearch() {
         )}
       </main>
 
-      {/* MODAL DE CADASTRO / EDIÇÃO DE MORADOR */}
+      {/* TELA CHEIA DE CADASTRO / EDIÇÃO DE MORADOR (FULL SCREEN SEM NENHUMA BORDA) */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative my-8 animate-in fade-in zoom-in-95 duration-200">
-            <button 
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition"
-            >
-              <X size={20} />
-            </button>
+        <div className="fixed inset-0 z-50 bg-gray-50 overflow-y-auto flex flex-col">
+          {/* Cabeçalho Fixo no Topo em Tela Cheia */}
+          <header className="bg-emerald-800 text-white sticky top-0 z-30 shadow-md">
+            <div className="max-w-2xl mx-auto px-4 py-3.5 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="flex items-center gap-1.5 text-white font-bold text-xs sm:text-sm bg-emerald-900/60 hover:bg-emerald-900 py-2 px-3 rounded-xl transition"
+              >
+                <ArrowLeft size={18} /> Voltar
+              </button>
 
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">
-                {isEditing ? 'Atualizar Meus Dados' : 'Cadastro de Morador'}
-              </h2>
-              <p className="text-xs text-gray-500 mt-1">
-                Seus dados ficam salvos para identificação automática de encomendas.
-              </p>
+              <div className="text-center flex-1 min-w-0">
+                <h2 className="text-base sm:text-lg font-bold text-white truncate">
+                  {isEditing ? 'Atualizar Meus Dados' : 'Cadastro de Morador'}
+                </h2>
+                <p className="text-[11px] text-emerald-200 truncate">
+                  ASSOMOBEC - Controle de Encomendas
+                </p>
+              </div>
+
+              <button 
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 text-emerald-100 hover:text-white bg-emerald-900/60 hover:bg-emerald-900 rounded-xl transition shrink-0"
+                title="Fechar"
+              >
+                <X size={20} />
+              </button>
             </div>
+          </header>
 
-            <form onSubmit={handleSaveResident} className="space-y-4">
-              {/* Foto do Morador */}
-              <div className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                {formPhotoUrl ? (
-                  <div className="relative">
-                    <img src={formPhotoUrl} alt="Foto Morador" className="w-24 h-24 rounded-full object-cover border-4 border-emerald-500 shadow-md" />
+          {/* Corpo do Formulário em Tela Cheia */}
+          <div className="flex-1 w-full max-w-2xl mx-auto px-4 py-6 space-y-6">
+            <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-sm border border-gray-200">
+              <form onSubmit={handleSaveResident} className="space-y-5">
+                
+                {/* Foto do Morador */}
+                <div className="flex flex-col items-center justify-center p-5 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200">
+                  {formPhotoUrl ? (
+                    <div className="relative mb-2">
+                      <img src={formPhotoUrl} alt="Foto Morador" className="w-28 h-28 rounded-full object-cover border-4 border-emerald-500 shadow-md" />
+                      <button
+                        type="button"
+                        onClick={() => setFormPhotoUrl(null)}
+                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1.5 shadow hover:bg-red-600"
+                        title="Remover foto"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3 shadow-inner">
+                      <Camera size={40} />
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setFormPhotoUrl(null)}
-                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition shadow-sm"
                     >
-                      <X size={14} />
+                      <Upload size={16} /> {formPhotoUrl ? 'Trocar Foto' : 'Tirar ou Escolher Foto'}
                     </button>
                   </div>
-                ) : (
-                  <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
-                    <Camera size={32} />
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    capture="user"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-2 text-center">Foto do morador para identificação na portaria (Opcional)</p>
+                </div>
+
+                {/* Nome Completo */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                    Nome Completo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="Ex: Maria dos Santos Silva"
+                    className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold text-gray-800 bg-gray-50/50"
+                  />
+                </div>
+
+                {/* CPF e Telefone */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                      CPF (Opcional / Recomendado)
+                    </label>
+                    <input
+                      type="text"
+                      value={formCpf}
+                      onChange={(e) => setFormCpf(formatCpf(e.target.value))}
+                      placeholder="000.000.000-00"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50"
+                    />
                   </div>
-                )}
-                <div className="mt-2 flex gap-2">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                      WhatsApp / Telefone
+                    </label>
+                    <input
+                      type="text"
+                      value={formPhone}
+                      onChange={(e) => setFormPhone(formatPhone(e.target.value))}
+                      placeholder="(00) 00000-0000"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Endereço Completo */}
+                <div className="p-4 sm:p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                    <MapPin size={16} className="text-emerald-600" /> Endereço Completo no Condomínio
+                  </span>
+
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Rua / Alameda / Travessa</label>
+                      <input
+                        type="text"
+                        value={formStreet}
+                        onChange={(e) => setFormStreet(e.target.value)}
+                        placeholder="Ex: Alameda das Palmeiras"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Número / Casa</label>
+                      <input
+                        type="text"
+                        value={formNumber}
+                        onChange={(e) => setFormNumber(e.target.value)}
+                        placeholder="Nº 123"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Quadra / Lote / Bloco / Apto</label>
+                      <input
+                        type="text"
+                        value={formBlock}
+                        onChange={(e) => setFormBlock(e.target.value)}
+                        placeholder="Ex: Qd 05, Lt 12"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Complemento / Ponto de ref.</label>
+                      <input
+                        type="text"
+                        value={formComplement}
+                        onChange={(e) => setFormComplement(e.target.value)}
+                        placeholder="Ex: Próximo à praça"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Botões de Ação */}
+                <div className="pt-3 space-y-2.5">
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base rounded-2xl shadow-lg hover:shadow-xl transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Check size={20} /> {isSaving ? 'Salvando seus dados...' : 'Confirmar e Salvar Cadastro'}
+                  </button>
+
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-bold rounded-lg flex items-center gap-1.5 transition"
+                    onClick={() => setIsModalOpen(false)}
+                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-sm rounded-xl transition"
                   >
-                    <Upload size={14} /> {formPhotoUrl ? 'Trocar Foto' : 'Adicionar Foto'}
+                    Cancelar
                   </button>
                 </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  capture="user"
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                />
-                <p className="text-[10px] text-gray-400 mt-1">Foto para identificação na portaria (Opcional)</p>
-              </div>
-
-              {/* Nome Completo */}
-              <div>
-                <label className="block text-xs font-bold uppercase text-gray-700 mb-1">Nome Completo *</label>
-                <input
-                  type="text"
-                  required
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Nome do morador..."
-                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-medium"
-                />
-              </div>
-
-              {/* CPF e Telefone */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-gray-700 mb-1">CPF (Opcional / Recomendado)</label>
-                  <input
-                    type="text"
-                    value={formCpf}
-                    onChange={(e) => setFormCpf(formatCpf(e.target.value))}
-                    placeholder="000.000.000-00"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-gray-700 mb-1">WhatsApp / Telefone</label>
-                  <input
-                    type="text"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(formatPhone(e.target.value))}
-                    placeholder="(00) 00000-0000"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Endereço Completo */}
-              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-                <span className="text-xs font-bold uppercase text-emerald-800 flex items-center gap-1">
-                  <MapPin size={14} /> Endereço Completo no Condomínio
-                </span>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <input
-                      type="text"
-                      value={formStreet}
-                      onChange={(e) => setFormStreet(e.target.value)}
-                      placeholder="Rua / Alameda / Travessa"
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs focus:ring-1 focus:ring-emerald-500 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={formNumber}
-                      onChange={(e) => setFormNumber(e.target.value)}
-                      placeholder="Número / Casa"
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs focus:ring-1 focus:ring-emerald-500 bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <input
-                      type="text"
-                      value={formBlock}
-                      onChange={(e) => setFormBlock(e.target.value)}
-                      placeholder="Quadra / Lote / Bloco / Apto"
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs focus:ring-1 focus:ring-emerald-500 bg-white"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={formComplement}
-                      onChange={(e) => setFormComplement(e.target.value)}
-                      placeholder="Complemento / Ponto de ref."
-                      className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs focus:ring-1 focus:ring-emerald-500 bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <Check size={18} /> {isSaving ? 'Salvando...' : 'Confirmar e Salvar Cadastro'}
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}
