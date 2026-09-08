@@ -349,16 +349,82 @@ export default function RegisterPackage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Transportadora</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Transportadora / Loja</label>
+                {carrier && (
+                  <button
+                    type="button"
+                    onClick={() => setCarrier('')}
+                    className="text-xs text-red-500 hover:underline font-semibold"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={carrier}
                 onChange={(e) => setCarrier(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-emerald-500"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm font-medium text-gray-800"
                 placeholder="Ex: Correios, Mercado Livre..."
               />
             </div>
           </div>
+
+          {/* Atalhos Rápidos de Transportadoras e Lojas */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+              Atalhos Rápidos de Transportadoras e Lojas (Clique para selecionar):
+            </p>
+            <div className="flex flex-wrap gap-1.5 max-h-52 overflow-y-auto p-2.5 bg-gray-50 rounded-2xl border border-gray-200">
+              {[
+                { label: 'Mercado Livre', icon: '🟡' },
+                { label: 'Shopee', icon: '🟠' },
+                { label: 'Amazon', icon: '🔵' },
+                { label: 'Magazine Luiza (Magalu)', icon: '🟢' },
+                { label: 'Shein', icon: '🟣' },
+                { label: 'AliExpress', icon: '🔴' },
+                { label: 'TikTok Shop', icon: '⚫' },
+                { label: 'Temu', icon: '🟤' },
+                { label: 'Casas Bahia', icon: '🔵' },
+                { label: 'Americanas', icon: '🟠' },
+                { label: 'OLX', icon: '⚪' },
+                { label: 'Loja/Outro', icon: '📦' },
+                { label: 'Correios', icon: '📮' },
+                { label: 'Mercado Envios', icon: '🟠' },
+                { label: 'Jadlog', icon: '🔴' },
+                { label: 'Loggi', icon: '🟢' },
+                { label: 'Total Express', icon: '🔵' },
+                { label: 'J&T Express', icon: '🟠' },
+                { label: 'Azul Cargo Express', icon: '✈️' },
+                { label: 'LATAM Cargo', icon: '✈️' },
+                { label: 'Buslog', icon: '🟣' },
+                { label: 'Braspress', icon: '🚚' },
+                { label: 'Rodonaves', icon: '🚚' },
+                { label: 'Jamef', icon: '🚚' },
+                { label: 'Magalog', icon: '📦' },
+                { label: 'Outra / Não informado', icon: '📦' },
+              ].map(item => {
+                const isSelected = carrier === item.label;
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setCarrier(item.label)}
+                    className={`text-xs px-2.5 py-1.5 rounded-xl font-medium transition flex items-center gap-1.5 shadow-2xs ${
+                      isSelected
+                        ? 'bg-emerald-600 text-white font-bold shadow-sm ring-2 ring-emerald-400'
+                        : 'bg-white text-gray-700 border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/60'
+                    }`}
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-1">Observações</label>
             <textarea
