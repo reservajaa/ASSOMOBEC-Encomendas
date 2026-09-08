@@ -173,25 +173,31 @@ export default function PublicSearch() {
 
   const handleSaveResident = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cpfDigits = formCpf.replace(/\D/g, '');
+    const phoneDigits = formPhone.replace(/\D/g, '');
+
     if (!formName.trim()) {
       toast.error('Informe seu Nome Completo.');
       return;
     }
 
-    const cpfDigits = formCpf.replace(/\D/g, '');
     if (!cpfDigits || cpfDigits.length !== 11) {
       toast.error('Informe um CPF válido com 11 dígitos.');
       return;
     }
 
-    const phoneDigits = formPhone.replace(/\D/g, '');
     if (!phoneDigits || phoneDigits.length < 10) {
       toast.error('Informe um WhatsApp/Telefone válido com DDD.');
       return;
     }
 
-    if (!formStreet.trim() || (!formNumber.trim() && !formBlock.trim())) {
-      toast.error('Informe o Endereço Completo no condomínio (Rua e Número ou Quadra/Lote).');
+    if (!formStreet.trim()) {
+      toast.error('Informe a Rua / Alameda / Travessa.');
+      return;
+    }
+
+    if (!formNumber.trim()) {
+      toast.error('Informe o Número / Casa.');
       return;
     }
 
@@ -250,6 +256,15 @@ export default function PublicSearch() {
   };
 
   const activePackages = packages.filter(p => p.status === 'pending');
+
+  // Validação em tempo real para habilitar o botão de confirmar/salvar
+  const isCpfValid = formCpf.replace(/\D/g, '').length === 11;
+  const isPhoneValid = formPhone.replace(/\D/g, '').length >= 10;
+  const isStreetValid = formStreet.trim().length > 0;
+  const isNumberValid = formNumber.trim().length > 0;
+  const isNameValid = formName.trim().length > 0;
+
+  const isFormValid = isNameValid && isCpfValid && isPhoneValid && isStreetValid && isNumberValid;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -644,7 +659,9 @@ export default function PublicSearch() {
 
                   <div className="grid grid-cols-3 gap-2.5">
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Rua / Alameda / Travessa *</label>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">
+                        Rua / Alameda / Travessa <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="text"
                         required
@@ -655,9 +672,12 @@ export default function PublicSearch() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Número / Casa</label>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">
+                        Número / Casa <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="text"
+                        required
                         value={formNumber}
                         onChange={(e) => setFormNumber(e.target.value)}
                         placeholder="Nº 123"
@@ -668,23 +688,27 @@ export default function PublicSearch() {
 
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Quadra / Lote / Bloco / Apto</label>
+                      <label className="block text-[10px] font-bold text-gray-400 mb-1">
+                        Quadra / Lote / Bloco / Apto <span className="text-gray-400 text-[9px] font-normal">(Opcional)</span>
+                      </label>
                       <input
                         type="text"
                         value={formBlock}
                         onChange={(e) => setFormBlock(e.target.value)}
                         placeholder="Ex: Qd 05, Lt 12"
-                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium text-gray-700"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Complemento / Ponto de ref.</label>
+                      <label className="block text-[10px] font-bold text-gray-400 mb-1">
+                        Complemento / Ponto de ref. <span className="text-gray-400 text-[9px] font-normal">(Opcional)</span>
+                      </label>
                       <input
                         type="text"
                         value={formComplement}
                         onChange={(e) => setFormComplement(e.target.value)}
                         placeholder="Ex: Próximo à praça"
-                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium text-gray-700"
                       />
                     </div>
                   </div>
@@ -694,10 +718,19 @@ export default function PublicSearch() {
                 <div className="pt-3 space-y-2.5">
                   <button
                     type="submit"
-                    disabled={isSaving}
-                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base rounded-2xl shadow-lg hover:shadow-xl transition flex items-center justify-center gap-2 disabled:opacity-50"
+                    disabled={!isFormValid || isSaving}
+                    className={`w-full py-4 font-bold text-base rounded-2xl shadow-lg transition flex items-center justify-center gap-2 ${
+                      isFormValid && !isSaving
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-xl cursor-pointer'
+                        : 'bg-gray-200 text-gray-400 border border-gray-300 shadow-none cursor-not-allowed opacity-80'
+                    }`}
                   >
-                    <Check size={20} /> {isSaving ? 'Salvando seus dados...' : 'Confirmar e Salvar Cadastro'}
+                    <Check size={20} /> 
+                    {isSaving 
+                      ? 'Salvando seus dados...' 
+                      : isFormValid 
+                        ? 'Confirmar e Salvar Cadastro' 
+                        : 'Preencha todos os campos obrigatórios'}
                   </button>
 
                   <button
