@@ -5,9 +5,9 @@ title Deploy - ASSOMOBEC Encomendas
 color 0A
 cls
 echo.
-echo  ==========================================
-echo   ASSOMOBEC - Deploy para GitHub
-echo  ==========================================
+echo  ======================================================
+echo         ASSOMOBEC - DEPLOY PARA GITHUB E NETLIFY
+echo  ======================================================
 echo.
 
 :: Entrar na pasta onde o script deploy.bat esta localizado
@@ -17,73 +17,73 @@ cd /d "%~dp0"
 git --version >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     color 0C
-    echo  [ERRO] Git nao encontrado! Instale o Git e tente novamente.
+    echo  [ERRO] Git nao encontrado no computador!
+    echo  Por favor instale o Git e tente novamente.
+    echo.
     pause
     exit /b 1
 )
 
-:: Mostrar arquivos alterados
-echo  Verificando alteracoes...
-echo.
-git status --short
+:: Garantir que o repositorio local esta configurado
+if not exist ".git" (
+    echo  Inicializando repositorio local...
+    git init
+    git branch -M main
+    git remote add origin https://github.com/reservajaa/ASSOMOBEC-Encomendas.git
+)
+
+echo  [1/3] Verificando e adicionando arquivos alterados...
+git add .
 echo.
 
-:: Verificar se ha alteracoes
+:: Verificar se ha algo para commitar
 git status --porcelain > "%TEMP%\gitstatus.txt"
 set /p STATUS=<"%TEMP%\gitstatus.txt"
 del "%TEMP%\gitstatus.txt" >nul 2>&1
 
-if "%STATUS%"=="" (
-    color 0B
-    echo  ==========================================
-    echo   Nenhuma alteracao. GitHub ja atualizado!
-    echo  ==========================================
+if not "%STATUS%"=="" (
+    echo  Arquivos alterados detectados:
+    git status --short
     echo.
-    pause
-    exit /b 0
-)
+    echo  Digite a descricao das alteracoes (ou pressione ENTER para data/hora):
+    set /p MSG="  >> "
+    echo.
 
-:: Pedir mensagem do commit
-echo  Digite a descricao das alteracoes:
-echo  (Pressione ENTER para usar data/hora automatica)
-echo.
-set /p MSG="  >> "
-echo.
+    if "!MSG!"=="" set MSG=Atualizacao automatica do sistema
 
-:: Usar mensagem automatica se nao digitar nada
-if "%MSG%"=="" (
     for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value 2^>nul') do set DATETIME=%%I
     if defined DATETIME (
-        set MSG=Atualizacao %DATETIME:~0,4%-%DATETIME:~4,2%-%DATETIME:~6,2% %DATETIME:~8,2%:%DATETIME:~10,2%
-    ) else (
-        set MSG=Atualizacao automatica
+        if "%MSG%"=="" set MSG=Atualizacao %DATETIME:~0,4%-%DATETIME:~4,2%-%DATETIME:~6,2% %DATETIME:~8,2%:%DATETIME:~10,2%
     )
+
+    echo  [2/3] Gravando versao (Commit)...
+    git commit -m "%MSG%"
+    echo.
+) else (
+    echo  [2/3] Todos os arquivos locais ja estao commitados.
+    echo.
 )
 
-echo  [1/3] Adicionando arquivos alterados...
-git add .
-echo.
-
-echo  [2/3] Criando commit: %MSG%
-git commit -m "%MSG%"
-echo.
-
-echo  [3/3] Enviando para GitHub...
+echo  [3/3] Enviando para o GitHub (origin main)...
 git push origin main
 
 echo.
 if %ERRORLEVEL% EQU 0 (
     color 0A
-    echo  ==========================================
-    echo   DEPLOY CONCLUIDO COM SUCESSO!
-    echo   github.com/reservajaa/ASSOMOBEC-Encomendas
-    echo  ==========================================
+    echo  ======================================================
+    echo   [SUCESSO] ARQUIVOS ENVIADOS AO GITHUB COM SUCESSO!
+    echo   O Netlify iniciara a atualizacao automatica do site.
+    echo.
+    echo   Acesse: https://assomobecencomendas.netlify.app/
+    echo   Dica: Se nao ver na hora, aperte CTRL + F5 para limpar
+    echo         o cache do navegador/PWA.
+    echo  ======================================================
 ) else (
     color 0C
-    echo  ==========================================
-    echo   ERRO no deploy! Verifique sua conexao
-    echo   ou autenticacao do GitHub.
-    echo  ==========================================
+    echo  ======================================================
+    echo   [ERRO] Falha ao enviar para o GitHub.
+    echo   Verifique sua conexao com a internet ou credenciais.
+    echo  ======================================================
 )
 
 echo.
