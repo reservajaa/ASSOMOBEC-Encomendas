@@ -1,10 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, addResident, addPackage, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
-import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone } from 'lucide-react';
+import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+
+const CARRIER_OPTIONS = [
+  { label: 'Mercado Livre', icon: '🟡' },
+  { label: 'Shopee', icon: '🟠' },
+  { label: 'Amazon', icon: '🔵' },
+  { label: 'Magazine Luiza (Magalu)', icon: '🟢' },
+  { label: 'Shein', icon: '🟣' },
+  { label: 'AliExpress', icon: '🔴' },
+  { label: 'TikTok Shop', icon: '⚫' },
+  { label: 'Temu', icon: '🟤' },
+  { label: 'Casas Bahia', icon: '🔵' },
+  { label: 'Americanas', icon: '🟠' },
+  { label: 'OLX', icon: '⚪' },
+  { label: 'Loja/Outro', icon: '📦' },
+  { label: 'Correios', icon: '📮' },
+  { label: 'Mercado Envios', icon: '🟠' },
+  { label: 'Jadlog', icon: '🔴' },
+  { label: 'Loggi', icon: '🟢' },
+  { label: 'Total Express', icon: '🔵' },
+  { label: 'J&T Express', icon: '🟠' },
+  { label: 'Azul Cargo Express', icon: '✈️' },
+  { label: 'LATAM Cargo', icon: '✈️' },
+  { label: 'Buslog', icon: '🟣' },
+  { label: 'Braspress', icon: '🚚' },
+  { label: 'Rodonaves', icon: '🚚' },
+  { label: 'Jamef', icon: '🚚' },
+  { label: 'Magalog', icon: '📦' },
+  { label: 'Outra / Não informado', icon: '📦' },
+];
 
 export default function RegisterPackage() {
   const { user } = useAuth();
@@ -18,12 +47,25 @@ export default function RegisterPackage() {
   
   const [photo, setPhoto] = useState<string | null>(null);
   const [carrier, setCarrier] = useState('');
+  const [showCarrierDropdown, setShowCarrierDropdown] = useState(false);
+  const carrierDropdownRef = useRef<HTMLDivElement>(null);
   const [recipientCpf, setRecipientCpf] = useState('');
   const [observations, setObservations] = useState('');
   const [loading, setLoading] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fecha dropdown de transportadora ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (carrierDropdownRef.current && !carrierDropdownRef.current.contains(event.target as Node)) {
+        setShowCarrierDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     loadResidents();
@@ -344,84 +386,93 @@ export default function RegisterPackage() {
                 type="text"
                 value={recipientCpf}
                 onChange={(e) => setRecipientCpf(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-emerald-500"
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-1 focus:ring-emerald-500 text-sm"
                 placeholder="000.000.000-00"
               />
             </div>
-            <div>
+            
+            {/* Campo de Transportadora com Menu Dropdown Suspenso */}
+            <div className="relative" ref={carrierDropdownRef}>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-sm font-medium text-gray-700">Transportadora / Loja</label>
                 {carrier && (
                   <button
                     type="button"
-                    onClick={() => setCarrier('')}
+                    onClick={() => {
+                      setCarrier('');
+                      setShowCarrierDropdown(true);
+                    }}
                     className="text-xs text-red-500 hover:underline font-semibold"
                   >
                     Limpar
                   </button>
                 )}
               </div>
-              <input
-                type="text"
-                value={carrier}
-                onChange={(e) => setCarrier(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm font-medium text-gray-800"
-                placeholder="Ex: Correios, Mercado Livre..."
-              />
-            </div>
-          </div>
+              
+              <div className="relative">
+                <input
+                  type="text"
+                  value={carrier}
+                  onFocus={() => setShowCarrierDropdown(true)}
+                  onClick={() => setShowCarrierDropdown(true)}
+                  onChange={(e) => {
+                    setCarrier(e.target.value);
+                    setShowCarrierDropdown(true);
+                  }}
+                  className="w-full pl-3.5 pr-10 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm font-medium text-gray-800 bg-white"
+                  placeholder="Clique para escolher ou digite..."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCarrierDropdown(!showCarrierDropdown)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <ChevronDown size={18} className={`transition-transform duration-200 ${showCarrierDropdown ? 'rotate-180 text-emerald-600' : ''}`} />
+                </button>
+              </div>
 
-          {/* Atalhos Rápidos de Transportadoras e Lojas */}
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
-              Atalhos Rápidos de Transportadoras e Lojas (Clique para selecionar):
-            </p>
-            <div className="flex flex-wrap gap-1.5 max-h-52 overflow-y-auto p-2.5 bg-gray-50 rounded-2xl border border-gray-200">
-              {[
-                { label: 'Mercado Livre', icon: '🟡' },
-                { label: 'Shopee', icon: '🟠' },
-                { label: 'Amazon', icon: '🔵' },
-                { label: 'Magazine Luiza (Magalu)', icon: '🟢' },
-                { label: 'Shein', icon: '🟣' },
-                { label: 'AliExpress', icon: '🔴' },
-                { label: 'TikTok Shop', icon: '⚫' },
-                { label: 'Temu', icon: '🟤' },
-                { label: 'Casas Bahia', icon: '🔵' },
-                { label: 'Americanas', icon: '🟠' },
-                { label: 'OLX', icon: '⚪' },
-                { label: 'Loja/Outro', icon: '📦' },
-                { label: 'Correios', icon: '📮' },
-                { label: 'Mercado Envios', icon: '🟠' },
-                { label: 'Jadlog', icon: '🔴' },
-                { label: 'Loggi', icon: '🟢' },
-                { label: 'Total Express', icon: '🔵' },
-                { label: 'J&T Express', icon: '🟠' },
-                { label: 'Azul Cargo Express', icon: '✈️' },
-                { label: 'LATAM Cargo', icon: '✈️' },
-                { label: 'Buslog', icon: '🟣' },
-                { label: 'Braspress', icon: '🚚' },
-                { label: 'Rodonaves', icon: '🚚' },
-                { label: 'Jamef', icon: '🚚' },
-                { label: 'Magalog', icon: '📦' },
-                { label: 'Outra / Não informado', icon: '📦' },
-              ].map(item => {
-                const isSelected = carrier === item.label;
-                return (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => setCarrier(item.label)}
-                    className={`text-xs px-2.5 py-1.5 rounded-xl font-medium transition flex items-center gap-1.5 shadow-2xs ${
-                      isSelected
-                        ? 'bg-emerald-600 text-white font-bold shadow-sm ring-2 ring-emerald-400'
-                        : 'bg-white text-gray-700 border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50/60'
-                    }`}
-                  >
-                    <span>{item.icon}</span>
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+              {/* Menu Suspenso (Dropdown) com itens um embaixo do outro */}
+              {showCarrierDropdown && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-30 max-h-60 overflow-y-auto divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
+                  {(() => {
+                    const search = carrier.trim().toLowerCase();
+                    const filtered = CARRIER_OPTIONS.filter(item =>
+                      item.label.toLowerCase().includes(search)
+                    );
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-3 text-center text-xs text-gray-500">
+                          Nenhuma opção predefinida com esse nome. Pressione Enter para usar "<strong>{carrier}</strong>".
+                        </div>
+                      );
+                    }
+
+                    return filtered.map(item => {
+                      const isSelected = carrier === item.label;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setCarrier(item.label);
+                            setShowCarrierDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 hover:bg-emerald-50 transition flex items-center justify-between text-sm ${
+                            isSelected ? 'bg-emerald-50 font-bold text-emerald-900' : 'text-gray-700 font-medium'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <span className="text-base shrink-0">{item.icon}</span>
+                            <span>{item.label}</span>
+                          </span>
+                          {isSelected && <Check size={16} className="text-emerald-600 shrink-0" />}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
             </div>
           </div>
 
