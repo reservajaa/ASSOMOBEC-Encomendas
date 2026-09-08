@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getResidents, addResident, updateResident, deleteResident, getPackagesByResident } from '../../db/localDb';
+import { getResidents, addResident, updateResident, deleteResident, getPackages } from '../../db/localDb';
 import { Resident } from '../../types';
 import { Search, UserPlus, Package as PackageIcon, Edit2, Trash2, CheckSquare, Square, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -25,10 +25,19 @@ export default function ManageResidents() {
   }, []);
 
   const loadData = async () => {
-    const res = await getResidents();
-    const withCounts = await Promise.all(res.map(async (r) => {
-      const pkgs = await getPackagesByResident(r.id);
-      return { ...r, packageCount: pkgs.length };
+    const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
+    
+    // Mapeamento O(1) ultra rápido na memória
+    const countMap = new Map<string, number>();
+    for (const p of allPkgs) {
+      if (p.residentId) {
+        countMap.set(p.residentId, (countMap.get(p.residentId) || 0) + 1);
+      }
+    }
+
+    const withCounts = res.map(r => ({
+      ...r,
+      packageCount: countMap.get(r.id) || 0
     }));
     
     withCounts.sort((a, b) => a.name.localeCompare(b.name));
@@ -38,15 +47,23 @@ export default function ManageResidents() {
 
   const handleAddResident = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newResidentName.trim() || isAdding) return;
+    const name = newResidentName.trim();
+    const cpf = newResidentCpf.trim();
+    if (!name || isAdding) return;
     
     setIsAdding(true);
     try {
-      await addResident(newResidentName.trim(), newResidentCpf.trim());
+      const created = await addResident(name, cpf);
       setNewResidentName('');
       setNewResidentCpf('');
+      
+      // Atualização imediata do estado da tela (UI Otimista)
+      setResidents(prev => {
+        const updated = [...prev, { ...created, packageCount: 0 }];
+        return updated.sort((a, b) => a.name.localeCompare(b.name));
+      });
+
       toast.success('Morador cadastrado com sucesso!');
-      await loadData();
     } catch (e) {
       toast.error('Erro ao cadastrar morador.');
     } finally {
@@ -61,15 +78,17 @@ export default function ManageResidents() {
   };
 
   const saveEdit = async (id: string) => {
-    if (!editName.trim()) {
+    const trimmedName = editName.trim().toUpperCase();
+    const trimmedCpf = editCpf.trim();
+    if (!trimmedName) {
       toast.error('O nome não pode ficar vazio.');
       return;
     }
     try {
-      await updateResident(id, editName.trim(), editCpf.trim());
-      toast.success('Morador atualizado!');
+      setResidents(prev => prev.map(r => r.id === id ? { ...r, name: trimmedName, cpf: trimmedCpf || undefined } : r).sort((a, b) => a.name.localeCompare(b.name)));
       setEditingId(null);
-      loadData();
+      await updateResident(id, trimmedName, trimmedCpf);
+      toast.success('Morador atualizado!');
     } catch (error) {
       toast.error('Erro ao atualizar morador.');
     }
@@ -77,9 +96,14 @@ export default function ManageResidents() {
 
   const handleDeleteSingle = async (id: string) => {
     try {
+      setResidents(prev => prev.filter(r => r.id !== id));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       await deleteResident(id);
       toast.success('Morador excluído!');
-      loadData();
     } catch (error) {
       toast.error('Erro ao excluir morador.');
     }
@@ -87,11 +111,12 @@ export default function ManageResidents() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
+    const idsToDelete = new Set(selectedIds);
     try {
-      const promises = Array.from(selectedIds).map((id: string) => deleteResident(id));
-      await Promise.all(promises);
-      toast.success(`${selectedIds.size} morador(es) excluído(s)!`);
-      loadData();
+      setResidents(prev => prev.filter(r => !idsToDelete.has(r.id)));
+      setSelectedIds(new Set());
+      await Promise.all(Array.from(idsToDelete).map(id => deleteResident(id)));
+      toast.success(`${idsToDelete.size} morador(es) excluído(s)!`);
     } catch (error) {
       toast.error('Erro ao excluir moradores.');
     }

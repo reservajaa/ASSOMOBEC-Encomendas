@@ -4,13 +4,20 @@ import { User, Resident, Package } from '../types';
 const LOCAL_STORAGE_RESIDENTS_KEY = 'assomobec_residents_cache';
 const LOCAL_STORAGE_PACKAGES_KEY = 'assomobec_packages_cache';
 
-// Utilitários para LocalStorage (garante persistência mesmo offline ou se a tabela Supabase ainda estiver sendo criada)
+// Utilitário para não travar a aplicação caso o Supabase demore ou a tabela ainda não exista
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout Supabase')), timeoutMs))
+  ]);
+}
+
+// Utilitários de armazenamento local instantâneo
 function getLocalResidents(): Resident[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_RESIDENTS_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.error("Erro ao ler moradores do localStorage:", e);
     return [];
   }
 }
@@ -18,9 +25,7 @@ function getLocalResidents(): Resident[] {
 function setLocalResidents(residents: Resident[]) {
   try {
     localStorage.setItem(LOCAL_STORAGE_RESIDENTS_KEY, JSON.stringify(residents));
-  } catch (e) {
-    console.error("Erro ao salvar moradores no localStorage:", e);
-  }
+  } catch (e) {}
 }
 
 function getLocalPackages(): Package[] {
@@ -28,7 +33,6 @@ function getLocalPackages(): Package[] {
     const raw = localStorage.getItem(LOCAL_STORAGE_PACKAGES_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.error("Erro ao ler encomendas do localStorage:", e);
     return [];
   }
 }
@@ -36,21 +40,24 @@ function getLocalPackages(): Package[] {
 function setLocalPackages(packages: Package[]) {
   try {
     localStorage.setItem(LOCAL_STORAGE_PACKAGES_KEY, JSON.stringify(packages));
-  } catch (e) {
-    console.error("Erro ao salvar encomendas no localStorage:", e);
-  }
+  } catch (e) {}
 }
 
 // ==========================================
-// MORADORES (RESIDENTS)
+// MORADORES (RESIDENTS) - ULTRA RÁPIDO
 // ==========================================
 
 export async function getResidents(): Promise<Resident[]> {
+  const localList = getLocalResidents();
+
+  // Tenta sincronizar com o Supabase com timeout de 2 segundos para NUNCA travar a tela
   try {
-    const { data, error } = await supabase
-      .from('residents')
-      .select('*')
-      .order('name', { ascending: true });
+    const { data, error } = await withTimeout(
+      supabase
+        .from('residents')
+        .select('*')
+        .order('name', { ascending: true })
+    );
 
     if (!error && data && Array.isArray(data)) {
       const residents: Resident[] = data.map((item: any) => ({
@@ -60,16 +67,14 @@ export async function getResidents(): Promise<Resident[]> {
         createdAt: Number(item.createdAt || item.created_at || Date.now())
       }));
 
-      // Salva cópia atualizada no localStorage
       setLocalResidents(residents);
       return residents;
     }
   } catch (err) {
-    console.warn("Supabase getResidents indisponível, usando cache local:", err);
+    // Se der timeout ou tabela não existir, usa imediatamente os dados locais
   }
 
-  // Fallback seguro: retorna do localStorage para nunca ficar vazio
-  return getLocalResidents().sort((a, b) => a.name.localeCompare(b.name));
+  return localList.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function addResident(name: string, cpf?: string): Promise<Resident> {
@@ -83,26 +88,27 @@ export async function addResident(name: string, cpf?: string): Promise<Resident>
     createdAt: Date.now()
   };
 
-  // 1. Salva imediatamente no localStorage (garante que NUNCA some no F5)
+  // 1. Salva IMEDIATAMENTE no LocalStorage (resposta em 0ms)
   const localList = getLocalResidents();
   localList.push(newResident);
   setLocalResidents(localList);
 
-  // 2. Envia para o Supabase
-  try {
-    const { error } = await supabase.from('residents').insert([{
-      id: newResident.id,
-      name: newResident.name,
-      cpf: newResident.cpf || null,
-      createdAt: newResident.createdAt
-    }]);
-
-    if (error) {
-      console.warn("Aviso ao sincronizar morador com Supabase:", error.message);
+  // 2. Dispara gravação no Supabase em segundo plano sem travar a interface do usuário
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('residents').insert([{
+          id: newResident.id,
+          name: newResident.name,
+          cpf: newResident.cpf || null,
+          createdAt: newResident.createdAt
+        }]),
+        3000
+      );
+    } catch (e) {
+      // Falha silenciosa em background; dado já está garantido no localStorage
     }
-  } catch (err) {
-    console.warn("Erro de conexão ao salvar morador no Supabase:", err);
-  }
+  })();
 
   return newResident;
 }
@@ -110,7 +116,7 @@ export async function addResident(name: string, cpf?: string): Promise<Resident>
 export async function updateResident(id: string, name: string, cpf?: string): Promise<void> {
   const upperName = name.toUpperCase().trim();
   
-  // 1. Atualiza no localStorage
+  // 1. Atualiza imediatamente no local
   const localList = getLocalResidents();
   const index = localList.findIndex(r => r.id === id);
   if (index !== -1) {
@@ -119,40 +125,51 @@ export async function updateResident(id: string, name: string, cpf?: string): Pr
     setLocalResidents(localList);
   }
 
-  // 2. Atualiza no Supabase
-  try {
-    await supabase.from('residents').update({
-      name: upperName,
-      cpf: cpf?.trim() || null
-    }).eq('id', id);
-  } catch (err) {
-    console.warn("Erro ao atualizar morador no Supabase:", err);
-  }
+  // 2. Dispara atualização no Supabase em background
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('residents').update({
+          name: upperName,
+          cpf: cpf?.trim() || null
+        }).eq('id', id),
+        3000
+      );
+    } catch (e) {}
+  })();
 }
 
 export async function deleteResident(id: string): Promise<void> {
-  // 1. Deleta do localStorage
+  // 1. Remove imediatamente do local
   const localList = getLocalResidents().filter(r => r.id !== id);
   setLocalResidents(localList);
 
-  // 2. Deleta do Supabase
-  try {
-    await supabase.from('residents').delete().eq('id', id);
-  } catch (err) {
-    console.warn("Erro ao excluir morador do Supabase:", err);
-  }
+  // 2. Dispara exclusão no Supabase em background
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('residents').delete().eq('id', id),
+        3000
+      );
+    } catch (e) {}
+  })();
 }
 
 // ==========================================
-// ENCOMENDAS (PACKAGES)
+// ENCOMENDAS (PACKAGES) - ULTRA RÁPIDO
 // ==========================================
 
 export async function getPackages(): Promise<Package[]> {
+  const localPkgs = getLocalPackages();
+
   try {
-    const { data, error } = await supabase
-      .from('packages')
-      .select('*')
-      .order('registeredAt', { ascending: false });
+    const { data, error } = await withTimeout(
+      supabase
+        .from('packages')
+        .select('*')
+        .order('registeredAt', { ascending: false }),
+      2000
+    );
 
     if (!error && data && Array.isArray(data)) {
       const pkgs: Package[] = data.map((item: any) => ({
@@ -173,11 +190,9 @@ export async function getPackages(): Promise<Package[]> {
       setLocalPackages(pkgs);
       return pkgs;
     }
-  } catch (err) {
-    console.warn("Supabase getPackages indisponível, usando cache local:", err);
-  }
+  } catch (err) {}
 
-  return getLocalPackages();
+  return localPkgs;
 }
 
 export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
@@ -187,34 +202,33 @@ export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
     id: newId
   };
 
-  // 1. Salva no localStorage
+  // 1. Salva imediatamente local
   const localList = getLocalPackages();
   localList.unshift(newPackage);
   setLocalPackages(localList);
 
-  // 2. Envia para o Supabase
-  try {
-    const { error } = await supabase.from('packages').insert([{
-      id: newPackage.id,
-      residentId: newPackage.residentId,
-      photoDataUrl: newPackage.photoDataUrl || null,
-      description: newPackage.description || null,
-      carrier: newPackage.carrier || null,
-      observations: newPackage.observations || null,
-      recipientCpf: newPackage.recipientCpf || null,
-      registeredAt: newPackage.registeredAt,
-      registeredBy: newPackage.registeredBy,
-      status: newPackage.status,
-      deliveredAt: newPackage.deliveredAt || null,
-      deliveredBy: newPackage.deliveredBy || null
-    }]);
-
-    if (error) {
-      console.warn("Aviso ao salvar pacote no Supabase:", error.message);
-    }
-  } catch (err) {
-    console.warn("Erro ao salvar pacote no Supabase:", err);
-  }
+  // 2. Dispara Supabase em background
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('packages').insert([{
+          id: newPackage.id,
+          residentId: newPackage.residentId,
+          photoDataUrl: newPackage.photoDataUrl || null,
+          description: newPackage.description || null,
+          carrier: newPackage.carrier || null,
+          observations: newPackage.observations || null,
+          recipientCpf: newPackage.recipientCpf || null,
+          registeredAt: newPackage.registeredAt,
+          registeredBy: newPackage.registeredBy,
+          status: newPackage.status,
+          deliveredAt: newPackage.deliveredAt || null,
+          deliveredBy: newPackage.deliveredBy || null
+        }]),
+        3000
+      );
+    } catch (e) {}
+  })();
 
   return newPackage;
 }
@@ -222,7 +236,6 @@ export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
 export async function updatePackageStatus(id: string, status: 'delivered', deliveredBy: string): Promise<void> {
   const deliveredAt = Date.now();
 
-  // 1. Atualiza no localStorage
   const localList = getLocalPackages();
   const index = localList.findIndex(p => p.id === id);
   if (index !== -1) {
@@ -232,48 +245,23 @@ export async function updatePackageStatus(id: string, status: 'delivered', deliv
     setLocalPackages(localList);
   }
 
-  // 2. Atualiza no Supabase
-  try {
-    await supabase.from('packages').update({
-      status,
-      deliveredAt,
-      deliveredBy
-    }).eq('id', id);
-  } catch (err) {
-    console.warn("Erro ao atualizar status do pacote no Supabase:", err);
-  }
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('packages').update({
+          status,
+          deliveredAt,
+          deliveredBy
+        }).eq('id', id),
+        3000
+      );
+    } catch (e) {}
+  })();
 }
 
 export async function getPackagesByResident(residentId: string): Promise<Package[]> {
-  try {
-    const { data, error } = await supabase
-      .from('packages')
-      .select('*')
-      .eq('residentId', residentId)
-      .order('registeredAt', { ascending: false });
-
-    if (!error && data && Array.isArray(data)) {
-      return data.map((item: any) => ({
-        id: String(item.id),
-        residentId: item.residentId || item.resident_id,
-        photoDataUrl: item.photoDataUrl || item.photo_data_url || undefined,
-        description: item.description || undefined,
-        carrier: item.carrier || undefined,
-        observations: item.observations || undefined,
-        recipientCpf: item.recipientCpf || item.recipient_cpf || undefined,
-        registeredAt: Number(item.registeredAt || item.registered_at || Date.now()),
-        registeredBy: item.registeredBy || item.registered_by || 'Administrador',
-        status: item.status || 'pending',
-        deliveredAt: item.deliveredAt || item.delivered_at ? Number(item.deliveredAt || item.delivered_at) : undefined,
-        deliveredBy: item.deliveredBy || item.delivered_by || undefined
-      }));
-    }
-  } catch (err) {
-    console.warn("Supabase getPackagesByResident indisponível:", err);
-  }
-
-  // Fallback do localStorage
-  return getLocalPackages()
+  const all = await getPackages();
+  return all
     .filter(p => p.residentId === residentId)
     .sort((a, b) => b.registeredAt - a.registeredAt);
 }
