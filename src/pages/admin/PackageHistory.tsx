@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { getPackages, getResidents, updatePackageStatus, subscribeToDataChanges } from '../../db/localDb';
+import { getPackages, getResidents, updatePackageStatus, clearAllPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Package, Resident } from '../../types';
-import { Search, Package as PackageIcon, CheckCircle2, Clock, UserRound, Filter } from 'lucide-react';
+import { Search, Package as PackageIcon, CheckCircle2, Clock, UserRound, Filter, Trash2, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -15,6 +15,8 @@ export default function PackageHistory() {
   const [searchTerm, setSearchTerm] = useState('');
   
   const [confirmDeliveryId, setConfirmDeliveryId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -48,6 +50,20 @@ export default function PackageHistory() {
     }
   };
 
+  const handleClearAllHistory = async () => {
+    setIsDeleting(true);
+    try {
+      await clearAllPackages();
+      toast.success('Todo o histórico de encomendas foi apagado com sucesso!');
+      setShowDeleteModal(false);
+      await loadData();
+    } catch (e) {
+      toast.error('Erro ao apagar histórico.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const filteredPackages = packages.filter(pkg => {
     if (filter !== 'all' && pkg.status !== filter) return false;
     if (searchTerm) {
@@ -59,11 +75,22 @@ export default function PackageHistory() {
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-800">Histórico de Encomendas</h1>
           <p className="text-gray-500">Controle e entrega de pacotes</p>
         </div>
+
+        {packages.length > 0 && (
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 font-bold text-sm rounded-xl border border-red-200 transition shadow-sm self-start sm:self-auto"
+            title="Apagar todo o histórico de encomendas"
+          >
+            <Trash2 size={18} />
+            Apagar Todo o Histórico
+          </button>
+        )}
       </div>
 
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center">
@@ -169,6 +196,45 @@ export default function PackageHistory() {
           ))
         )}
       </div>
+
+      {/* Modal de Confirmação para Apagar Todo o Histórico */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto shadow-inner">
+              <AlertTriangle size={32} />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-bold text-gray-900">Apagar Todo o Histórico?</h3>
+              <p className="text-sm text-gray-500">
+                Esta ação apagará <strong>todas as {packages.length} encomendas</strong> (pendentes e entregues) do sistema e do banco de dados. Esta ação não poderá ser desfeita.
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleClearAllHistory}
+                className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Trash2 size={18} />
+                {isDeleting ? 'Apagando histórico...' : 'Sim, Apagar Todo o Histórico'}
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteModal(false)}
+                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

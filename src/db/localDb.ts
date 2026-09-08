@@ -467,6 +467,22 @@ export async function getPackagesByResident(residentId: string): Promise<Package
     .sort((a, b) => b.registeredAt - a.registeredAt);
 }
 
+export async function clearAllPackages(): Promise<void> {
+  memoryPackages = [];
+  setLocalPackages([]);
+  notifyDataChanges();
+
+  try {
+    // Apaga do Supabase (todas as linhas com id não nulo)
+    await withTimeout(
+      supabase.from('packages').delete().neq('id', 'placeholder_never_match_xyz'),
+      6000
+    );
+  } catch (e) {
+    console.error('[clearAllPackages] Erro ao apagar pacotes do Supabase:', e);
+  }
+}
+
 // --- Auth ---
 export async function loginUser(email: string, password: string): Promise<User | null> {
   throw new Error("Autenticação direta.");
