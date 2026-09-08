@@ -103,20 +103,14 @@ export default function PublicSearch() {
     setAllPackages(pkgData.filter(p => p.status === 'pending'));
   };
 
-  // Busca inteligente por CPF (apenas dígitos) ou Nome
+  // Busca somente por CPF
   useEffect(() => {
-    const cleanTerm = searchTerm.trim();
-    if (cleanTerm.length >= 2) {
-      const termUpper = cleanTerm.toUpperCase();
-      const termDigits = cleanTerm.replace(/\D/g, '');
-
+    const digits = searchTerm.replace(/\D/g, '');
+    if (digits.length >= 3) {
       const matches = residents.filter(r => {
-        const nameMatch = r.name.includes(termUpper);
         const cpfDigits = (r.cpf || '').replace(/\D/g, '');
-        const cpfMatch = termDigits.length >= 3 && cpfDigits.includes(termDigits);
-        return nameMatch || cpfMatch;
+        return cpfDigits.includes(digits);
       });
-
       setFilteredResidents(matches);
     } else {
       setFilteredResidents([]);
@@ -257,18 +251,20 @@ export default function PublicSearch() {
         {!selectedResident ? (
           <div className="bg-white rounded-3xl shadow-xl p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-1 text-center">Consulta de Encomendas</h2>
-            <p className="text-gray-500 text-xs text-center mb-6">Digite seu CPF ou Nome para ver suas encomendas.</p>
+            <p className="text-gray-500 text-xs text-center mb-6">Digite seu CPF para ver suas encomendas.</p>
             
-            {/* Campo de Busca */}
+            {/* Campo de Busca por CPF */}
             <div className="relative">
-              <label className="block text-xs font-bold uppercase text-gray-600 mb-2">Digite seu CPF ou Nome Completo</label>
+              <label className="block text-xs font-bold uppercase text-gray-600 mb-2">Digite seu CPF</label>
               <div className="relative">
                 <input
                   type="text"
+                  inputMode="numeric"
+                  maxLength={14}
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-emerald-100 focus:border-emerald-500 focus:ring-0 bg-gray-50 text-base transition-colors font-medium text-gray-800 placeholder:text-gray-400"
-                  placeholder="Ex: 123.456.789-00 ou Maria..."
+                  onChange={(e) => setSearchTerm(formatCpf(e.target.value))}
+                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-emerald-100 focus:border-emerald-500 focus:ring-0 bg-gray-50 text-base transition-colors font-medium text-gray-800 placeholder:text-gray-400 tracking-widest"
+                  placeholder="000.000.000-00"
                 />
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600" size={22} />
               </div>
@@ -313,9 +309,9 @@ export default function PublicSearch() {
                 </div>
               )}
 
-              {searchTerm.length > 2 && filteredResidents.length === 0 && (
+              {searchTerm.replace(/\D/g, '').length >= 3 && filteredResidents.length === 0 && (
                 <div className="mt-4 p-4 rounded-2xl bg-orange-50 border border-orange-200 text-center space-y-2">
-                  <p className="text-sm font-semibold text-orange-800">Nenhum morador encontrado com esse termo.</p>
+                  <p className="text-sm font-semibold text-orange-800">CPF não encontrado no sistema.</p>
                   <p className="text-xs text-orange-600">Ainda não possui cadastro na portaria?</p>
                   <button
                     type="button"
