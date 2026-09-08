@@ -230,6 +230,29 @@ export default function RegisterPackage() {
     }
   };
 
+  // Atalho da tecla Enter para REGISTRAR ENCOMENDA
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Se pressionou Enter
+      if (e.key === 'Enter') {
+        // Se estiver num textarea, deixa pular linha com Enter normal
+        if (e.target instanceof HTMLTextAreaElement) return;
+
+        // Se o dropdown de transportadora estiver aberto ou pesquisando morador sem ter selecionado ainda
+        if (showCarrierDropdown) return;
+        if (!selectedResident && searchTerm.trim().length > 0) return;
+
+        if (selectedResident && !loading) {
+          e.preventDefault();
+          handleSubmit();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedResident, photo, carrier, observations, recipientCpf, loading, showCarrierDropdown, searchTerm, user]);
+
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-20">
       <div>
@@ -493,9 +516,19 @@ export default function RegisterPackage() {
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-lg py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition disabled:opacity-70"
+            className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold text-lg py-4 rounded-xl shadow-lg flex items-center justify-center gap-3 transition disabled:opacity-70 cursor-pointer"
           >
-            {loading ? 'Salvando...' : <><Check size={24} /> REGISTRAR ENCOMENDA</>}
+            {loading ? (
+              'Salvando...'
+            ) : (
+              <>
+                <Check size={24} />
+                <span>REGISTRAR ENCOMENDA</span>
+                <span className="hidden sm:inline-block text-xs bg-orange-800/60 px-2 py-0.5 rounded-md font-mono tracking-wider text-orange-100">
+                  Enter ↵
+                </span>
+              </>
+            )}
           </button>
         </div>
 
