@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, getPackages, getPackagesByResident, addResident, updateResident, subscribeToDataChanges } from '../db/localDb';
 import { Resident, Package } from '../types';
-import { Search, Package as PackageIcon, Calendar, Clock, UserRound, ArrowLeft, PlusCircle, Camera, Upload, MapPin, Phone, Edit3, X, Check, ShieldCheck } from 'lucide-react';
+import { Search, Package as PackageIcon, Calendar, Clock, UserRound, ArrowLeft, PlusCircle, Camera, Upload, MapPin, Phone, Edit3, X, Check, ShieldCheck, Bell, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -356,14 +356,28 @@ export default function PublicSearch() {
               )}
             </div>
 
-            {/* Aviso Informativo */}
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mt-6">
-              <p className="text-emerald-900 text-xs leading-relaxed flex items-start gap-2">
-                <ShieldCheck size={18} className="text-emerald-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Cadastro Seguro:</strong> Seus dados ficam salvos na portaria para agilizar o recebimento e aviso das suas encomendas.
-                </span>
-              </p>
+            {/* Aviso Informativo: Manter dados atualizados */}
+            <div className="mt-6 space-y-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-xs">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <Bell size={16} />
+                  </div>
+                  <div className="text-xs text-amber-900 leading-relaxed">
+                    <strong className="block text-amber-950 font-bold mb-0.5">Importante: Mantenha seus dados atualizados!</strong>
+                    Certifique-se de que seu <strong>WhatsApp/Telefone</strong> e <strong>Endereço no condomínio</strong> estejam sempre corretos para que a portaria consiga identificar e notificar a chegada das suas encomendas sem atrasos.
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5">
+                <p className="text-emerald-900 text-xs leading-relaxed flex items-center gap-2.5">
+                  <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+                  <span>
+                    <strong>Portaria ASSOMOBEC:</strong> Controle rápido e seguro de encomendas.
+                  </span>
+                </p>
+              </div>
             </div>
             
             <div className="mt-6 text-center">
