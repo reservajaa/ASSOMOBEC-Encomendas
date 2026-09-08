@@ -4,15 +4,7 @@ import { User, Resident, Package } from '../types';
 const LOCAL_STORAGE_RESIDENTS_KEY = 'assomobec_residents_cache';
 const LOCAL_STORAGE_PACKAGES_KEY = 'assomobec_packages_cache';
 
-// Utilitário para não travar a aplicação caso o Supabase demore ou a tabela ainda não exista
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout Supabase')), timeoutMs))
-  ]);
-}
-
-// Utilitários de armazenamento local instantâneo
+// Utilitários de armazenamento local
 function getLocalResidents(): Resident[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_RESIDENTS_KEY);
@@ -43,20 +35,50 @@ function setLocalPackages(packages: Package[]) {
   } catch (e) {}
 }
 
-// ==========================================
-// MORADORES (RESIDENTS) - ULTRA RÁPIDO
-// ==========================================
+// =========================================================================
+// CACHE EM MEMÓRIA GLOBAL (ZERO DELAY / 0 MILISSEGUNDOS ENTRE ABAS)
+// =========================================================================
+let memoryResidents: Resident[] = getLocalResidents();
+let memoryPackages: Package[] = getLocalPackages();
 
-export async function getResidents(): Promise<Resident[]> {
-  const localList = getLocalResidents();
+type DataChangeListener = () => void;
+const listeners: Set<DataChangeListener> = new Set();
 
-  // Tenta sincronizar com o Supabase com timeout de 2 segundos para NUNCA travar a tela
+export function subscribeToDataChanges(listener: DataChangeListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function notifyDataChanges() {
+  listeners.forEach(fn => {
+    try {
+      fn();
+    } catch (e) {}
+  });
+}
+
+// Timeout de proteção para chamadas de background
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs))
+  ]);
+}
+
+// Sincronizações assíncronas em background (Stale-While-Revalidate)
+let isSyncingResidents = false;
+async function syncResidentsBackground() {
+  if (isSyncingResidents) return;
+  isSyncingResidents = true;
   try {
     const { data, error } = await withTimeout(
       supabase
         .from('residents')
         .select('*')
-        .order('name', { ascending: true })
+        .order('name', { ascending: true }),
+      3000
     );
 
     if (!error && data && Array.isArray(data)) {
@@ -67,108 +89,28 @@ export async function getResidents(): Promise<Resident[]> {
         createdAt: Number(item.createdAt || item.created_at || Date.now())
       }));
 
+      memoryResidents = residents;
       setLocalResidents(residents);
-      return residents;
+      notifyDataChanges();
     }
   } catch (err) {
-    // Se der timeout ou tabela não existir, usa imediatamente os dados locais
+    // Falha silenciosa de background; os dados locais já estão em uso
+  } finally {
+    isSyncingResidents = false;
   }
-
-  return localList.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function addResident(name: string, cpf?: string): Promise<Resident> {
-  const newId = 'res_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-  const upperName = name.toUpperCase().trim();
-  
-  const newResident: Resident = {
-    id: newId,
-    name: upperName,
-    cpf: cpf?.trim() || undefined,
-    createdAt: Date.now()
-  };
-
-  // 1. Salva IMEDIATAMENTE no LocalStorage (resposta em 0ms)
-  const localList = getLocalResidents();
-  localList.push(newResident);
-  setLocalResidents(localList);
-
-  // 2. Dispara gravação no Supabase em segundo plano sem travar a interface do usuário
-  (async () => {
-    try {
-      await withTimeout(
-        supabase.from('residents').insert([{
-          id: newResident.id,
-          name: newResident.name,
-          cpf: newResident.cpf || null,
-          createdAt: newResident.createdAt
-        }]),
-        3000
-      );
-    } catch (e) {
-      // Falha silenciosa em background; dado já está garantido no localStorage
-    }
-  })();
-
-  return newResident;
-}
-
-export async function updateResident(id: string, name: string, cpf?: string): Promise<void> {
-  const upperName = name.toUpperCase().trim();
-  
-  // 1. Atualiza imediatamente no local
-  const localList = getLocalResidents();
-  const index = localList.findIndex(r => r.id === id);
-  if (index !== -1) {
-    localList[index].name = upperName;
-    localList[index].cpf = cpf?.trim() || undefined;
-    setLocalResidents(localList);
-  }
-
-  // 2. Dispara atualização no Supabase em background
-  (async () => {
-    try {
-      await withTimeout(
-        supabase.from('residents').update({
-          name: upperName,
-          cpf: cpf?.trim() || null
-        }).eq('id', id),
-        3000
-      );
-    } catch (e) {}
-  })();
-}
-
-export async function deleteResident(id: string): Promise<void> {
-  // 1. Remove imediatamente do local
-  const localList = getLocalResidents().filter(r => r.id !== id);
-  setLocalResidents(localList);
-
-  // 2. Dispara exclusão no Supabase em background
-  (async () => {
-    try {
-      await withTimeout(
-        supabase.from('residents').delete().eq('id', id),
-        3000
-      );
-    } catch (e) {}
-  })();
-}
-
-// ==========================================
-// ENCOMENDAS (PACKAGES) - ULTRA RÁPIDO
-// ==========================================
-
-export async function getPackages(): Promise<Package[]> {
-  const localPkgs = getLocalPackages();
-
+let isSyncingPackages = false;
+async function syncPackagesBackground() {
+  if (isSyncingPackages) return;
+  isSyncingPackages = true;
   try {
     const { data, error } = await withTimeout(
       supabase
         .from('packages')
         .select('*')
         .order('registeredAt', { ascending: false }),
-      2000
+      3000
     );
 
     if (!error && data && Array.isArray(data)) {
@@ -187,12 +129,130 @@ export async function getPackages(): Promise<Package[]> {
         deliveredBy: item.deliveredBy || item.delivered_by || undefined
       }));
 
+      memoryPackages = pkgs;
       setLocalPackages(pkgs);
-      return pkgs;
+      notifyDataChanges();
     }
-  } catch (err) {}
+  } catch (err) {
+  } finally {
+    isSyncingPackages = false;
+  }
+}
 
-  return localPkgs;
+// Inicia sincronização de background de cara
+syncResidentsBackground();
+syncPackagesBackground();
+
+// ==========================================
+// MORADORES (RESIDENTS) - 0ms RETORNO IMEDIATO
+// ==========================================
+
+export async function getResidents(): Promise<Resident[]> {
+  // Dispara revalidação em background sem bloquear
+  syncResidentsBackground();
+
+  // Retorna IMEDIATAMENTE (0ms) os dados já prontos em memória
+  if (memoryResidents.length > 0) {
+    return [...memoryResidents].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Fallback rápido do localStorage
+  const local = getLocalResidents();
+  memoryResidents = local;
+  return [...local].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function addResident(name: string, cpf?: string): Promise<Resident> {
+  const newId = 'res_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+  const upperName = name.toUpperCase().trim();
+  
+  const newResident: Resident = {
+    id: newId,
+    name: upperName,
+    cpf: cpf?.trim() || undefined,
+    createdAt: Date.now()
+  };
+
+  // 1. Atualiza memória e LocalStorage imediatamente (0ms)
+  memoryResidents.push(newResident);
+  setLocalResidents(memoryResidents);
+  notifyDataChanges();
+
+  // 2. Dispara envio ao Supabase em background
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('residents').insert([{
+          id: newResident.id,
+          name: newResident.name,
+          cpf: newResident.cpf || null,
+          createdAt: newResident.createdAt
+        }]),
+        4000
+      );
+    } catch (e) {}
+  })();
+
+  return newResident;
+}
+
+export async function updateResident(id: string, name: string, cpf?: string): Promise<void> {
+  const upperName = name.toUpperCase().trim();
+  
+  // Atualiza memória e localStorage na hora
+  const index = memoryResidents.findIndex(r => r.id === id);
+  if (index !== -1) {
+    memoryResidents[index].name = upperName;
+    memoryResidents[index].cpf = cpf?.trim() || undefined;
+    setLocalResidents(memoryResidents);
+    notifyDataChanges();
+  }
+
+  // Supabase em background
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('residents').update({
+          name: upperName,
+          cpf: cpf?.trim() || null
+        }).eq('id', id),
+        4000
+      );
+    } catch (e) {}
+  })();
+}
+
+export async function deleteResident(id: string): Promise<void> {
+  // Remove de memória e localStorage na hora
+  memoryResidents = memoryResidents.filter(r => r.id !== id);
+  setLocalResidents(memoryResidents);
+  notifyDataChanges();
+
+  // Supabase em background
+  (async () => {
+    try {
+      await withTimeout(
+        supabase.from('residents').delete().eq('id', id),
+        4000
+      );
+    } catch (e) {}
+  })();
+}
+
+// ==========================================
+// ENCOMENDAS (PACKAGES) - 0ms RETORNO IMEDIATO
+// ==========================================
+
+export async function getPackages(): Promise<Package[]> {
+  syncPackagesBackground();
+
+  if (memoryPackages.length > 0) {
+    return [...memoryPackages];
+  }
+
+  const local = getLocalPackages();
+  memoryPackages = local;
+  return [...local];
 }
 
 export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
@@ -202,12 +262,10 @@ export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
     id: newId
   };
 
-  // 1. Salva imediatamente local
-  const localList = getLocalPackages();
-  localList.unshift(newPackage);
-  setLocalPackages(localList);
+  memoryPackages.unshift(newPackage);
+  setLocalPackages(memoryPackages);
+  notifyDataChanges();
 
-  // 2. Dispara Supabase em background
   (async () => {
     try {
       await withTimeout(
@@ -225,7 +283,7 @@ export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
           deliveredAt: newPackage.deliveredAt || null,
           deliveredBy: newPackage.deliveredBy || null
         }]),
-        3000
+        4000
       );
     } catch (e) {}
   })();
@@ -236,13 +294,13 @@ export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
 export async function updatePackageStatus(id: string, status: 'delivered', deliveredBy: string): Promise<void> {
   const deliveredAt = Date.now();
 
-  const localList = getLocalPackages();
-  const index = localList.findIndex(p => p.id === id);
+  const index = memoryPackages.findIndex(p => p.id === id);
   if (index !== -1) {
-    localList[index].status = status;
-    localList[index].deliveredAt = deliveredAt;
-    localList[index].deliveredBy = deliveredBy;
-    setLocalPackages(localList);
+    memoryPackages[index].status = status;
+    memoryPackages[index].deliveredAt = deliveredAt;
+    memoryPackages[index].deliveredBy = deliveredBy;
+    setLocalPackages(memoryPackages);
+    notifyDataChanges();
   }
 
   (async () => {
@@ -253,15 +311,14 @@ export async function updatePackageStatus(id: string, status: 'delivered', deliv
           deliveredAt,
           deliveredBy
         }).eq('id', id),
-        3000
+        4000
       );
     } catch (e) {}
   })();
 }
 
 export async function getPackagesByResident(residentId: string): Promise<Package[]> {
-  const all = await getPackages();
-  return all
+  return memoryPackages
     .filter(p => p.residentId === residentId)
     .sort((a, b) => b.registeredAt - a.registeredAt);
 }

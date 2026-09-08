@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getResidents, addResident, addPackage } from '../../db/localDb';
+import { getResidents, addResident, addPackage, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
 import { Camera, Image as ImageIcon, Search, Plus, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -27,6 +27,10 @@ export default function RegisterPackage() {
 
   useEffect(() => {
     loadResidents();
+    const unsubscribe = subscribeToDataChanges(() => {
+      loadResidents();
+    });
+    return () => unsubscribe();
   }, []);
 
   const loadResidents = async () => {

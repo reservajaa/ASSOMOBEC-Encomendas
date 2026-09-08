@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getPackages, getResidents, updatePackageStatus } from '../../db/localDb';
+import { getPackages, getResidents, updatePackageStatus, subscribeToDataChanges } from '../../db/localDb';
 import { Package, Resident } from '../../types';
 import { Search, Package as PackageIcon, CheckCircle2, Clock, UserRound, Filter } from 'lucide-react';
 import { format } from 'date-fns';
@@ -18,6 +18,10 @@ export default function PackageHistory() {
 
   useEffect(() => {
     loadData();
+    const unsubscribe = subscribeToDataChanges(() => {
+      loadData();
+    });
+    return () => unsubscribe();
   }, []);
 
   const loadData = async () => {

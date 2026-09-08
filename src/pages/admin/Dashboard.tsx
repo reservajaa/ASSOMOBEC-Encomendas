@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getPackages, getResidents } from '../../db/localDb';
+import { getPackages, getResidents, subscribeToDataChanges } from '../../db/localDb';
 import { Package, Resident } from '../../types';
 import { Package as PackageIcon, CheckCircle2, Clock, Users } from 'lucide-react';
 import { isToday } from 'date-fns';
@@ -33,7 +33,12 @@ export default function Dashboard() {
         residentsWithPackages: residentsWithPkgs
       });
     }
+
     loadStats();
+    const unsubscribe = subscribeToDataChanges(() => {
+      loadStats();
+    });
+    return () => unsubscribe();
   }, []);
 
   return (

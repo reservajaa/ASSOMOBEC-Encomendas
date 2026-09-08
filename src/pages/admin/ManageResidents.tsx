@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getResidents, addResident, updateResident, deleteResident, getPackages } from '../../db/localDb';
+import { getResidents, addResident, updateResident, deleteResident, getPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
 import { Search, UserPlus, Package as PackageIcon, Edit2, Trash2, CheckSquare, Square, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -22,6 +22,10 @@ export default function ManageResidents() {
 
   useEffect(() => {
     loadData();
+    const unsubscribe = subscribeToDataChanges(() => {
+      loadData();
+    });
+    return () => unsubscribe();
   }, []);
 
   const loadData = async () => {

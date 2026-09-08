@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getResidents, getPackages, getPackagesByResident } from '../db/localDb';
+import { getResidents, getPackages, getPackagesByResident, subscribeToDataChanges } from '../db/localDb';
 import { Resident, Package } from '../types';
 import { Search, Package as PackageIcon, Calendar, Clock, UserRound, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
@@ -15,6 +15,10 @@ export default function PublicSearch() {
   
   useEffect(() => {
     loadData();
+    const unsubscribe = subscribeToDataChanges(() => {
+      loadData();
+    });
+    return () => unsubscribe();
   }, []);
 
   const loadData = async () => {
