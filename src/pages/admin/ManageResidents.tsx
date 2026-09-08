@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { getResidents, addResident, updateResident, deleteResident, getPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
-import { Search, UserPlus, Package as PackageIcon, Edit2, Trash2, CheckSquare, Square, X, Check, MapPin, Phone, UserRound } from 'lucide-react';
+import { Search, UserPlus, Package as PackageIcon, Edit2, Trash2, CheckSquare, Square, X, Check, MapPin, Phone, UserRound, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 
 export default function ManageResidents() {
-  const [residents, setResidents] = useState<(Resident & { packageCount: number })[]>([]);
+  const [residents, setResidents] = useState<(Resident & { pendingCount: number; deliveredCount: number; totalCount: number })[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   
   // Form para novo morador
@@ -38,17 +38,25 @@ export default function ManageResidents() {
   const loadData = async () => {
     const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
     
-    // Mapeamento O(1) ultra rápido na memória
-    const countMap = new Map<string, number>();
+    // Contagem real separando pendentes de retiradas/entregues
+    const pendingMap = new Map<string, number>();
+    const deliveredMap = new Map<string, number>();
+
     for (const p of allPkgs) {
       if (p.residentId) {
-        countMap.set(p.residentId, (countMap.get(p.residentId) || 0) + 1);
+        if (p.status === 'pending') {
+          pendingMap.set(p.residentId, (pendingMap.get(p.residentId) || 0) + 1);
+        } else if (p.status === 'delivered') {
+          deliveredMap.set(p.residentId, (deliveredMap.get(p.residentId) || 0) + 1);
+        }
       }
     }
 
     const withCounts = res.map(r => ({
       ...r,
-      packageCount: countMap.get(r.id) || 0
+      pendingCount: pendingMap.get(r.id) || 0,
+      deliveredCount: deliveredMap.get(r.id) || 0,
+      totalCount: (pendingMap.get(r.id) || 0) + (deliveredMap.get(r.id) || 0)
     }));
     
     withCounts.sort((a, b) => a.name.localeCompare(b.name));
@@ -82,7 +90,7 @@ export default function ManageResidents() {
       
       // Atualização imediata do estado (0ms)
       setResidents(prev => {
-        const updated = [...prev, { ...created, packageCount: 0 }];
+        const updated = [...prev, { ...created, pendingCount: 0, deliveredCount: 0, totalCount: 0 }];
         return updated.sort((a, b) => a.name.localeCompare(b.name));
       });
 
@@ -390,10 +398,25 @@ export default function ManageResidents() {
                 <div className="flex items-center gap-2 justify-end">
                   {!editingId || editingId !== res.id ? (
                     <>
-                      <div className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg text-emerald-800 shrink-0" title="Encomendas">
-                        <PackageIcon size={16} />
-                        <span className="font-bold text-xs">{res.packageCount} pendentes</span>
-                      </div>
+                      {res.pendingCount > 0 ? (
+                        <div 
+                          className="flex items-center gap-1.5 bg-orange-50 border border-orange-200 px-3 py-1.5 rounded-lg text-orange-800 shrink-0 shadow-xs" 
+                          title={`${res.pendingCount} encomenda(s) aguardando retirada na portaria`}
+                        >
+                          <PackageIcon size={16} className="text-orange-600" />
+                          <span className="font-bold text-xs">{res.pendingCount} pendente{res.pendingCount > 1 ? 's' : ''}</span>
+                        </div>
+                      ) : (
+                        <div 
+                          className="flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-200/70 px-3 py-1.5 rounded-lg text-emerald-800 shrink-0" 
+                          title={res.deliveredCount > 0 ? `${res.deliveredCount} encomenda(s) retirada(s)/entregue(s)` : 'Nenhuma encomenda pendente'}
+                        >
+                          <CheckCircle2 size={16} className="text-emerald-600" />
+                          <span className="font-bold text-xs">
+                            {res.deliveredCount > 0 ? `Sem pendências (${res.deliveredCount} retirada${res.deliveredCount > 1 ? 's' : ''})` : 'Sem pendências'}
+                          </span>
+                        </div>
+                      )}
                       <button onClick={() => startEdit(res)} className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" title="Editar morador">
                         <Edit2 size={17} />
                       </button>

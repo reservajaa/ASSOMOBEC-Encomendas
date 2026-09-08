@@ -44,6 +44,34 @@ let memoryPackages: Package[] = getLocalPackages();
 type DataChangeListener = () => void;
 const listeners: Set<DataChangeListener> = new Set();
 
+// Sincronização entre abas do mesmo navegador (BroadcastChannel)
+let syncChannel: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+  try {
+    syncChannel = new BroadcastChannel('assomobec_sync_channel');
+    syncChannel.onmessage = () => {
+      memoryResidents = getLocalResidents();
+      memoryPackages = getLocalPackages();
+      listeners.forEach(fn => {
+        try { fn(); } catch (e) {}
+      });
+    };
+  } catch (e) {}
+}
+
+// Sincronização entre abas via evento de Storage
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === LOCAL_STORAGE_RESIDENTS_KEY || e.key === LOCAL_STORAGE_PACKAGES_KEY) {
+      memoryResidents = getLocalResidents();
+      memoryPackages = getLocalPackages();
+      listeners.forEach(fn => {
+        try { fn(); } catch (e) {}
+      });
+    }
+  });
+}
+
 export function subscribeToDataChanges(listener: DataChangeListener): () => void {
   listeners.add(listener);
   return () => {
@@ -57,6 +85,11 @@ function notifyDataChanges() {
       fn();
     } catch (e) {}
   });
+
+  // Notifica outras abas abertas no navegador
+  try {
+    syncChannel?.postMessage({ type: 'sync', timestamp: Date.now() });
+  } catch (e) {}
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T> {
@@ -77,7 +110,7 @@ async function syncResidentsBackground() {
         .from('residents')
         .select('*')
         .order('name', { ascending: true }),
-      3000
+      4000
     );
 
     if (!error && data && Array.isArray(data)) {
@@ -110,9 +143,8 @@ async function syncPackagesBackground() {
     const { data, error } = await withTimeout(
       supabase
         .from('packages')
-        .select('*')
-        .order('registeredAt', { ascending: false }),
-      3000
+        .select('*'),
+      4000
     );
 
     if (!error && data && Array.isArray(data)) {
@@ -131,6 +163,9 @@ async function syncPackagesBackground() {
         deliveredBy: item.deliveredBy || item.delivered_by || undefined
       }));
 
+      // Ordenar mais recentes primeiro
+      pkgs.sort((a, b) => b.registeredAt - a.registeredAt);
+
       memoryPackages = pkgs;
       setLocalPackages(pkgs);
       notifyDataChanges();
@@ -141,9 +176,29 @@ async function syncPackagesBackground() {
   }
 }
 
-// Boot
+// Inicialização imediata
 syncResidentsBackground();
 syncPackagesBackground();
+
+// Sincronização periódica em background (a cada 4s) e Supabase Realtime para múltiplos dispositivos
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    syncResidentsBackground();
+    syncPackagesBackground();
+  }, 4000);
+
+  try {
+    supabase
+      .channel('public_realtime_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, () => {
+        syncPackagesBackground();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'residents' }, () => {
+        syncResidentsBackground();
+      })
+      .subscribe();
+  } catch (e) {}
+}
 
 // ==========================================
 // MORADORES (RESIDENTS) - 0ms
