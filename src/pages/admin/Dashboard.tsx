@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getPackages, getResidents, subscribeToDataChanges } from '../../db/localDb';
 import { Package, Resident } from '../../types';
-import { Package as PackageIcon, CheckCircle2, Clock, Users } from 'lucide-react';
+import { Package as PackageIcon, CheckCircle2, Clock, Users, UserCheck } from 'lucide-react';
 import { isToday } from 'date-fns';
 import { Link } from 'react-router-dom';
 
@@ -11,12 +11,16 @@ export default function Dashboard() {
     pending: 0,
     delivered: 0,
     today: 0,
-    residentsWithPackages: 0
+    residentsWithPackages: 0,
+    totalResidents: 0
   });
 
   useEffect(() => {
     async function loadStats() {
-      const pkgs = await getPackages();
+      const [pkgs, residents] = await Promise.all([
+        getPackages(),
+        getResidents()
+      ]);
       
       const pending = pkgs.filter(p => p.status === 'pending');
       const delivered = pkgs.filter(p => p.status === 'delivered');
@@ -30,7 +34,8 @@ export default function Dashboard() {
         pending: pending.length,
         delivered: delivered.length,
         today: today.length,
-        residentsWithPackages: residentsWithPkgs
+        residentsWithPackages: residentsWithPkgs,
+        totalResidents: residents.length
       });
     }
 
@@ -86,7 +91,7 @@ export default function Dashboard() {
       </div>
 
       {/* Cards de Estatísticas: no celular fica abaixo das ações rápidas (order-2), no desktop fica antes (md:order-1) */}
-      <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="order-2 md:order-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         <StatCard 
           title="Total Registradas" 
           value={stats.total} 
@@ -106,11 +111,19 @@ export default function Dashboard() {
           bg="bg-emerald-50" 
         />
         <StatCard 
-          title="Moradores com Encomenda" 
+          title="Moradores c/ Encomenda" 
           value={stats.residentsWithPackages} 
           icon={<Users size={24} className="text-purple-600" />} 
           bg="bg-purple-50" 
         />
+        <Link to="/admin/residents" className="block transition transform hover:-translate-y-0.5">
+          <StatCard 
+            title="Moradores Cadastrados" 
+            value={stats.totalResidents} 
+            icon={<UserCheck size={24} className="text-teal-600" />} 
+            bg="bg-teal-50" 
+          />
+        </Link>
       </div>
     </div>
   );
