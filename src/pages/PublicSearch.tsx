@@ -348,24 +348,12 @@ export default function PublicSearch() {
                   <button
                     type="button"
                     onClick={handleOpenNewResident}
-                    className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
+                    className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <PlusCircle size={18} /> Cadastrar Meus Dados Agora
                   </button>
                 </div>
               )}
-            </div>
-
-            {/* Botão de Autocadastro de Morador em Destaque */}
-            <div className="mt-6 pt-5 border-t border-gray-100 text-center">
-              <button
-                type="button"
-                onClick={handleOpenNewResident}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm rounded-2xl shadow-md transition flex items-center justify-center gap-2"
-              >
-                <UserRound size={18} /> Cadastrar Meus Dados de Morador
-              </button>
-              <p className="text-[11px] text-gray-400 mt-2">Cadastre seu Nome, CPF, Foto e Endereço para receber encomendas.</p>
             </div>
 
             {/* Aviso Informativo */}
