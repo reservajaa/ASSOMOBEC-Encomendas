@@ -13,6 +13,9 @@ export interface Resident {
   id: string;
   name: string;
   cpf?: string;
+  phone?: string;
+  photoUrl?: string;
+  address?: string;
   createdAt: number;
 }
 

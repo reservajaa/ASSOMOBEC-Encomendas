@@ -36,7 +36,7 @@ function setLocalPackages(packages: Package[]) {
 }
 
 // =========================================================================
-// CACHE EM MEMÓRIA GLOBAL (ZERO DELAY / 0 MILISSEGUNDOS ENTRE ABAS)
+// CACHE EM MEMÓRIA GLOBAL (ZERO DELAY / 0 MILISSEGUNDOS)
 // =========================================================================
 let memoryResidents: Resident[] = getLocalResidents();
 let memoryPackages: Package[] = getLocalPackages();
@@ -59,7 +59,6 @@ function notifyDataChanges() {
   });
 }
 
-// Timeout de proteção para chamadas de background
 function withTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T> {
   return Promise.race([
     promise,
@@ -67,7 +66,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T> {
   ]);
 }
 
-// Sincronizações assíncronas em background (Stale-While-Revalidate)
+// Sincronização em background de Moradores
 let isSyncingResidents = false;
 async function syncResidentsBackground() {
   if (isSyncingResidents) return;
@@ -86,6 +85,9 @@ async function syncResidentsBackground() {
         id: String(item.id),
         name: item.name,
         cpf: item.cpf || undefined,
+        phone: item.phone || undefined,
+        photoUrl: item.photoUrl || item.photo_url || undefined,
+        address: item.address || undefined,
         createdAt: Number(item.createdAt || item.created_at || Date.now())
       }));
 
@@ -94,12 +96,12 @@ async function syncResidentsBackground() {
       notifyDataChanges();
     }
   } catch (err) {
-    // Falha silenciosa de background; os dados locais já estão em uso
   } finally {
     isSyncingResidents = false;
   }
 }
 
+// Sincronização em background de Encomendas
 let isSyncingPackages = false;
 async function syncPackagesBackground() {
   if (isSyncingPackages) return;
@@ -139,37 +141,70 @@ async function syncPackagesBackground() {
   }
 }
 
-// Inicia sincronização de background de cara
+// Boot
 syncResidentsBackground();
 syncPackagesBackground();
 
 // ==========================================
-// MORADORES (RESIDENTS) - 0ms RETORNO IMEDIATO
+// MORADORES (RESIDENTS) - 0ms
 // ==========================================
 
 export async function getResidents(): Promise<Resident[]> {
-  // Dispara revalidação em background sem bloquear
   syncResidentsBackground();
 
-  // Retorna IMEDIATAMENTE (0ms) os dados já prontos em memória
   if (memoryResidents.length > 0) {
     return [...memoryResidents].sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // Fallback rápido do localStorage
   const local = getLocalResidents();
   memoryResidents = local;
   return [...local].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function addResident(name: string, cpf?: string): Promise<Resident> {
+export interface AddResidentInput {
+  name: string;
+  cpf?: string;
+  phone?: string;
+  photoUrl?: string;
+  address?: string;
+}
+
+export async function addResident(
+  inputOrName: string | AddResidentInput,
+  maybeCpf?: string,
+  maybeAddress?: string,
+  maybePhotoUrl?: string,
+  maybePhone?: string
+): Promise<Resident> {
   const newId = 'res_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-  const upperName = name.toUpperCase().trim();
   
+  let name = '';
+  let cpf: string | undefined;
+  let phone: string | undefined;
+  let photoUrl: string | undefined;
+  let address: string | undefined;
+
+  if (typeof inputOrName === 'string') {
+    name = inputOrName.toUpperCase().trim();
+    cpf = maybeCpf?.trim() || undefined;
+    address = maybeAddress?.trim() || undefined;
+    photoUrl = maybePhotoUrl || undefined;
+    phone = maybePhone?.trim() || undefined;
+  } else {
+    name = inputOrName.name.toUpperCase().trim();
+    cpf = inputOrName.cpf?.trim() || undefined;
+    phone = inputOrName.phone?.trim() || undefined;
+    photoUrl = inputOrName.photoUrl || undefined;
+    address = inputOrName.address?.trim() || undefined;
+  }
+
   const newResident: Resident = {
     id: newId,
-    name: upperName,
-    cpf: cpf?.trim() || undefined,
+    name,
+    cpf,
+    phone,
+    photoUrl,
+    address,
     createdAt: Date.now()
   };
 
@@ -186,6 +221,9 @@ export async function addResident(name: string, cpf?: string): Promise<Resident>
           id: newResident.id,
           name: newResident.name,
           cpf: newResident.cpf || null,
+          phone: newResident.phone || null,
+          photoUrl: newResident.photoUrl || null,
+          address: newResident.address || null,
           createdAt: newResident.createdAt
         }]),
         4000
@@ -196,26 +234,48 @@ export async function addResident(name: string, cpf?: string): Promise<Resident>
   return newResident;
 }
 
-export async function updateResident(id: string, name: string, cpf?: string): Promise<void> {
-  const upperName = name.toUpperCase().trim();
-  
-  // Atualiza memória e localStorage na hora
+export async function updateResident(
+  id: string,
+  updatesOrName: string | Partial<Resident>,
+  cpf?: string,
+  address?: string,
+  photoUrl?: string,
+  phone?: string
+): Promise<void> {
+  let updates: Partial<Resident> = {};
+
+  if (typeof updatesOrName === 'string') {
+    updates.name = updatesOrName.toUpperCase().trim();
+    if (cpf !== undefined) updates.cpf = cpf.trim() || undefined;
+    if (address !== undefined) updates.address = address.trim() || undefined;
+    if (photoUrl !== undefined) updates.photoUrl = photoUrl;
+    if (phone !== undefined) updates.phone = phone.trim() || undefined;
+  } else {
+    updates = { ...updatesOrName };
+    if (updates.name) updates.name = updates.name.toUpperCase().trim();
+  }
+
   const index = memoryResidents.findIndex(r => r.id === id);
   if (index !== -1) {
-    memoryResidents[index].name = upperName;
-    memoryResidents[index].cpf = cpf?.trim() || undefined;
+    memoryResidents[index] = {
+      ...memoryResidents[index],
+      ...updates
+    };
     setLocalResidents(memoryResidents);
     notifyDataChanges();
   }
 
-  // Supabase em background
   (async () => {
     try {
+      const payload: any = {};
+      if (updates.name !== undefined) payload.name = updates.name;
+      if (updates.cpf !== undefined) payload.cpf = updates.cpf || null;
+      if (updates.phone !== undefined) payload.phone = updates.phone || null;
+      if (updates.photoUrl !== undefined) payload.photoUrl = updates.photoUrl || null;
+      if (updates.address !== undefined) payload.address = updates.address || null;
+
       await withTimeout(
-        supabase.from('residents').update({
-          name: upperName,
-          cpf: cpf?.trim() || null
-        }).eq('id', id),
+        supabase.from('residents').update(payload).eq('id', id),
         4000
       );
     } catch (e) {}
@@ -223,12 +283,10 @@ export async function updateResident(id: string, name: string, cpf?: string): Pr
 }
 
 export async function deleteResident(id: string): Promise<void> {
-  // Remove de memória e localStorage na hora
   memoryResidents = memoryResidents.filter(r => r.id !== id);
   setLocalResidents(memoryResidents);
   notifyDataChanges();
 
-  // Supabase em background
   (async () => {
     try {
       await withTimeout(
@@ -240,7 +298,7 @@ export async function deleteResident(id: string): Promise<void> {
 }
 
 // ==========================================
-// ENCOMENDAS (PACKAGES) - 0ms RETORNO IMEDIATO
+// ENCOMENDAS (PACKAGES) - 0ms
 // ==========================================
 
 export async function getPackages(): Promise<Package[]> {

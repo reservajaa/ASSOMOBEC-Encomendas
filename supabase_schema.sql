@@ -1,17 +1,25 @@
 -- =======================================================
 -- BANCO DE DADOS SUPABASE - PROJETO ASSOMOBEC ENCOMENDAS
 -- Copie e cole este código no SQL Editor do seu Supabase
--- (https://supabase.com/dashboard/project/gzwraiiqxzerrrwsbmxg/sql)
+-- (https://supabase.com/dashboard/project/gzwraiiqxzerrrwsbmxg/sql/new)
 -- e clique em RUN
 -- =======================================================
 
--- 1. Tabela de Moradores (residents)
+-- 1. Tabela de Moradores (residents) com Foto, Endereço e Telefone
 CREATE TABLE IF NOT EXISTS public.residents (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     cpf TEXT,
+    phone TEXT,
+    "photoUrl" TEXT,
+    address TEXT,
     "createdAt" BIGINT NOT NULL
 );
+
+-- Adiciona as colunas caso a tabela já tenha sido criada anteriormente
+ALTER TABLE public.residents ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.residents ADD COLUMN IF NOT EXISTS "photoUrl" TEXT;
+ALTER TABLE public.residents ADD COLUMN IF NOT EXISTS address TEXT;
 
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE public.residents ENABLE ROW LEVEL SECURITY;
