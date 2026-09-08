@@ -124,9 +124,14 @@ async function syncResidentsBackground() {
         createdAt: Number(item.createdAt || item.created_at || Date.now())
       }));
 
-      memoryResidents = residents;
-      setLocalResidents(residents);
-      notifyDataChanges();
+      // Só sobrescreve se o Supabase trouxe dados,
+      // OU se a memória local também está vazia
+      // (evita apagar cadastros locais não sincronizados ainda)
+      if (residents.length > 0 || memoryResidents.length === 0) {
+        memoryResidents = residents;
+        setLocalResidents(residents);
+        notifyDataChanges();
+      }
     }
   } catch (err) {
   } finally {
@@ -268,23 +273,49 @@ export async function addResident(
   setLocalResidents(memoryResidents);
   notifyDataChanges();
 
-  // 2. Dispara envio ao Supabase em background
-  (async () => {
+  // 2. Envia ao Supabase AGUARDANDO confirmação (para garantir persistência)
+  const insertPayload = {
+    id: newResident.id,
+    name: newResident.name,
+    cpf: newResident.cpf || null,
+    phone: newResident.phone || null,
+    photoUrl: newResident.photoUrl || null,
+    address: newResident.address || null,
+    createdAt: newResident.createdAt
+  };
+
+  // Tenta salvar no Supabase (com 2 tentativas)
+  let saved = false;
+  for (let attempt = 0; attempt < 2 && !saved; attempt++) {
     try {
-      await withTimeout(
-        supabase.from('residents').insert([{
-          id: newResident.id,
-          name: newResident.name,
-          cpf: newResident.cpf || null,
-          phone: newResident.phone || null,
-          photoUrl: newResident.photoUrl || null,
-          address: newResident.address || null,
-          createdAt: newResident.createdAt
-        }]),
-        4000
+      const { error } = await withTimeout(
+        supabase.from('residents').insert([insertPayload]),
+        6000
       );
-    } catch (e) {}
-  })();
+      if (!error) {
+        saved = true;
+      } else {
+        console.error('[addResident] Supabase insert error:', error);
+      }
+    } catch (e) {
+      console.error('[addResident] Insert attempt', attempt + 1, 'failed:', e);
+    }
+  }
+
+  // 3. Se não salvou, agenda retentativa final em background
+  if (!saved) {
+    setTimeout(async () => {
+      try {
+        await supabase.from('residents').upsert([insertPayload]);
+      } catch (e) {}
+    }, 3000);
+  }
+
+  // 4. Força re-sincronização do Supabase para garantir consistência
+  setTimeout(() => {
+    isSyncingResidents = false;
+    syncResidentsBackground();
+  }, 1000);
 
   return newResident;
 }
