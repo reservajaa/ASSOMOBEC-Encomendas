@@ -174,7 +174,24 @@ export default function PublicSearch() {
   const handleSaveResident = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
-      toast.error('Informe seu nome completo.');
+      toast.error('Informe seu Nome Completo.');
+      return;
+    }
+
+    const cpfDigits = formCpf.replace(/\D/g, '');
+    if (!cpfDigits || cpfDigits.length !== 11) {
+      toast.error('Informe um CPF válido com 11 dígitos.');
+      return;
+    }
+
+    const phoneDigits = formPhone.replace(/\D/g, '');
+    if (!phoneDigits || phoneDigits.length < 10) {
+      toast.error('Informe um WhatsApp/Telefone válido com DDD.');
+      return;
+    }
+
+    if (!formStreet.trim() || (!formNumber.trim() && !formBlock.trim())) {
+      toast.error('Informe o Endereço Completo no condomínio (Rua e Número ou Quadra/Lote).');
       return;
     }
 
@@ -570,7 +587,7 @@ export default function PublicSearch() {
                 {/* Nome Completo */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                    Nome Completo *
+                    Nome Completo <span className="text-red-500">* Obrigatório</span>
                   </label>
                   <input
                     type="text"
@@ -586,41 +603,51 @@ export default function PublicSearch() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                      CPF (Opcional / Recomendado)
+                      CPF <span className="text-red-500">* Obrigatório</span>
                     </label>
                     <input
                       type="text"
+                      required
+                      inputMode="numeric"
+                      maxLength={14}
                       value={formCpf}
                       onChange={(e) => setFormCpf(formatCpf(e.target.value))}
                       placeholder="000.000.000-00"
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50 tracking-wider font-semibold"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                      WhatsApp / Telefone
+                      WhatsApp / Telefone <span className="text-red-500">* Obrigatório</span>
                     </label>
                     <input
                       type="text"
+                      required
+                      inputMode="numeric"
+                      maxLength={15}
                       value={formPhone}
                       onChange={(e) => setFormPhone(formatPhone(e.target.value))}
                       placeholder="(00) 00000-0000"
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50"
+                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50 font-medium"
                     />
                   </div>
                 </div>
 
                 {/* Endereço Completo */}
                 <div className="p-4 sm:p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                    <MapPin size={16} className="text-emerald-600" /> Endereço Completo no Condomínio
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                      <MapPin size={16} className="text-emerald-600" /> Endereço Completo no Condomínio
+                    </span>
+                    <span className="text-[11px] font-bold text-red-500">* Obrigatório</span>
+                  </div>
 
                   <div className="grid grid-cols-3 gap-2.5">
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Rua / Alameda / Travessa</label>
+                      <label className="block text-[10px] font-bold text-gray-500 mb-1">Rua / Alameda / Travessa *</label>
                       <input
                         type="text"
+                        required
                         value={formStreet}
                         onChange={(e) => setFormStreet(e.target.value)}
                         placeholder="Ex: Alameda das Palmeiras"
