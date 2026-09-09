@@ -496,14 +496,15 @@ export default function PublicSearch() {
                         )}
                       </div>
                     )}
-                    
                     <div className="p-4 space-y-2 text-xs text-gray-600 relative overflow-hidden">
-                      {/* Carimbo RETIRADA no lado direito */}
+                      {/* Carimbo RETIRADA NA ASSOCIAÇÃO no lado direito */}
                       {pkg.status === 'delivered' && (
-                        <div className="absolute right-3 top-3 pointer-events-none select-none z-10">
-                          <div className="border-[3px] border-dashed border-red-600/85 text-red-600 font-black text-xs sm:text-sm px-3 py-1 rounded-xl rotate-[-12deg] tracking-widest uppercase bg-red-50/50 shadow-xs flex items-center gap-1">
-                            <span>RETIRADA</span>
-                          </div>
+                        <div className="absolute right-2 sm:right-4 top-2 sm:top-3 pointer-events-none select-none z-10">
+                          <img 
+                            src="/carimbo_retirada.png" 
+                            alt="Carimbo Retirada na Associação" 
+                            className="w-20 h-20 sm:w-24 sm:h-24 object-contain -rotate-12 drop-shadow-md opacity-95 hover:rotate-0 transition-transform"
+                          />
                         </div>
                       )}
 

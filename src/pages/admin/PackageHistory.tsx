@@ -134,7 +134,16 @@ export default function PackageHistory() {
           </div>
         ) : (
           filteredPackages.map(pkg => (
-            <div key={pkg.id} className={`bg-white rounded-2xl border-2 overflow-hidden shadow-sm flex flex-col ${pkg.status === 'pending' ? 'border-orange-100' : 'border-gray-200 opacity-80'}`}>
+            <div key={pkg.id} className={`bg-white rounded-2xl border-2 overflow-hidden shadow-sm flex flex-col relative ${pkg.status === 'pending' ? 'border-orange-100' : 'border-gray-200'}`}>
+              {pkg.status === 'delivered' && (
+                <div className="absolute right-3 top-12 pointer-events-none select-none z-10">
+                  <img 
+                    src="/carimbo_retirada.png" 
+                    alt="Carimbo Retirada na Associação" 
+                    className="w-16 h-16 sm:w-20 sm:h-20 object-contain -rotate-12 drop-shadow-sm opacity-85"
+                  />
+                </div>
+              )}
               <div className={`p-3 flex justify-between items-center border-b ${pkg.status === 'pending' ? 'bg-orange-50 border-orange-100' : 'bg-gray-50 border-gray-200'}`}>
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${pkg.status === 'pending' ? 'bg-orange-200 text-orange-800' : 'bg-gray-200 text-gray-700'}`}>
                   {pkg.status === 'pending' ? 'PENDENTE' : 'ENTREGUE'}
