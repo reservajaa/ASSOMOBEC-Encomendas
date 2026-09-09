@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, addResident, addPackage, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
-import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, ChevronDown, Archive, Layers, Bookmark } from 'lucide-react';
+import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, ChevronDown, Archive, Layers, Bookmark, Edit2, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const STORAGE_LOCATION_SHORTCUTS = [
+const DEFAULT_STORAGE_LOCATIONS = [
   'Estante Rua Principal',
   'Estante Rua A',
   'Estante Rua B',
@@ -72,6 +72,76 @@ export default function RegisterPackage() {
   const [storageLocation, setStorageLocation] = useState('');
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const locationDropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Lista de locais persistida no navegador
+  const [savedLocations, setSavedLocations] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('assomobec_storage_locations');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_STORAGE_LOCATIONS;
+  });
+
+  const [editingLocationIndex, setEditingLocationIndex] = useState<number | null>(null);
+  const [editingLocationText, setEditingLocationText] = useState('');
+
+  const persistLocations = (newLocs: string[]) => {
+    setSavedLocations(newLocs);
+    try {
+      localStorage.setItem('assomobec_storage_locations', JSON.stringify(newLocs));
+    } catch (e) {}
+  };
+
+  // Salva o local digitado se ainda não existir na lista
+  const handleSaveCurrentLocation = () => {
+    const trimmed = storageLocation.trim();
+    if (!trimmed) return;
+    if (savedLocations.some(loc => loc.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error('Este lugar já está salvo na lista!');
+      return;
+    }
+    const updated = [trimmed, ...savedLocations];
+    persistLocations(updated);
+    toast.success(`Lugar "${trimmed}" salvo com sucesso!`);
+  };
+
+  // Edita um local existente
+  const handleSaveEditLocation = (index: number) => {
+    const trimmed = editingLocationText.trim();
+    if (!trimmed) {
+      toast.error('O nome do lugar não pode ficar vazio.');
+      return;
+    }
+    const updated = [...savedLocations];
+    const oldName = updated[index];
+    updated[index] = trimmed;
+    persistLocations(updated);
+
+    if (storageLocation === oldName) {
+      setStorageLocation(trimmed);
+    }
+
+    setEditingLocationIndex(null);
+    setEditingLocationText('');
+    toast.success('Lugar atualizado com sucesso!');
+  };
+
+  // Exclui um local da lista
+  const handleDeleteLocation = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const locToDelete = savedLocations[index];
+    const updated = savedLocations.filter((_, i) => i !== index);
+    persistLocations(updated);
+
+    if (storageLocation === locToDelete) {
+      setStorageLocation('');
+    }
+    toast.success(`Lugar "${locToDelete}" excluído!`);
+  };
+
   const [recipientCpf, setRecipientCpf] = useState('');
   const [observations, setObservations] = useState('');
   const [loading, setLoading] = useState(false);
@@ -87,6 +157,7 @@ export default function RegisterPackage() {
       }
       if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
         setShowLocationDropdown(false);
+        setEditingLocationIndex(null);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -554,69 +625,175 @@ export default function RegisterPackage() {
                   setStorageLocation(e.target.value);
                   setShowLocationDropdown(true);
                 }}
-                className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm font-semibold text-gray-800 bg-white placeholder:text-gray-400 placeholder:font-normal"
-                placeholder="Ex: Estante Rua A, Gaveta 3, Prateleira 2..."
+                className="w-full pl-10 pr-24 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm font-semibold text-gray-800 bg-white placeholder:text-gray-400 placeholder:font-normal"
+                placeholder="Digite o local ou escolha abaixo..."
               />
               <Bookmark size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" />
-              <button
-                type="button"
-                onClick={() => setShowLocationDropdown(!showLocationDropdown)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
-                title="Ver sugestões de locais"
-              >
-                <ChevronDown size={18} className={`transition-transform duration-200 ${showLocationDropdown ? 'rotate-180 text-emerald-600' : ''}`} />
-              </button>
+              
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {storageLocation.trim() && !savedLocations.some(l => l.toLowerCase() === storageLocation.trim().toLowerCase()) && (
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentLocation}
+                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition flex items-center gap-1"
+                    title="Salvar este novo lugar na lista de sugestões"
+                  >
+                    <Plus size={13} /> Salvar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowLocationDropdown(!showLocationDropdown)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                  title="Ver lista de locais"
+                >
+                  <ChevronDown size={18} className={`transition-transform duration-200 ${showLocationDropdown ? 'rotate-180 text-emerald-600' : ''}`} />
+                </button>
+              </div>
             </div>
 
-            {/* Menu Dropdown com sugestões de estantes, gavetas e prateleiras */}
+            {/* Menu Dropdown com gerenciamento completo: Escolher, Editar e Excluir */}
             {showLocationDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-30 max-h-56 overflow-y-auto divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
-                <div className="p-2 bg-emerald-50/70 border-b border-emerald-100 text-[11px] font-bold text-emerald-900 flex items-center gap-1">
-                  <Layers size={13} /> Escolha uma opção ou digite livremente acima:
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-30 max-h-64 overflow-y-auto divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
+                <div className="p-2.5 bg-emerald-50/80 border-b border-emerald-100 text-[11px] font-bold text-emerald-950 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Layers size={13} className="text-emerald-700" /> Lugares Salvos ({savedLocations.length})
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-normal">Você pode editar ou excluir</span>
                 </div>
-                {STORAGE_LOCATION_SHORTCUTS.map(locationName => {
-                  const isSelected = storageLocation === locationName;
-                  return (
+
+                {storageLocation.trim() && !savedLocations.some(l => l.toLowerCase() === storageLocation.trim().toLowerCase()) && (
+                  <div className="p-2 bg-emerald-50/40 flex items-center justify-between border-b border-emerald-100">
+                    <span className="text-xs text-gray-700 font-medium truncate">
+                      Salvar "<strong>{storageLocation}</strong>" na lista?
+                    </span>
                     <button
-                      key={locationName}
                       type="button"
-                      onClick={() => {
-                        setStorageLocation(locationName);
-                        setShowLocationDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-2.5 hover:bg-emerald-50 transition flex items-center justify-between text-sm ${
-                        isSelected ? 'bg-emerald-50 font-bold text-emerald-900' : 'text-gray-700 font-medium'
-                      }`}
+                      onClick={handleSaveCurrentLocation}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 ml-2"
                     >
-                      <span className="flex items-center gap-2">
-                        <span className="text-emerald-600 font-bold text-xs">📍</span>
-                        <span>{locationName}</span>
-                      </span>
-                      {isSelected && <Check size={16} className="text-emerald-600 shrink-0" />}
+                      <Plus size={14} /> Salvar Novo
                     </button>
-                  );
-                })}
+                  </div>
+                )}
+
+                {savedLocations.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-gray-400">
+                    Nenhum lugar salvo no momento. Digite acima e clique em "Salvar".
+                  </div>
+                ) : (
+                  savedLocations.map((locationName, index) => {
+                    const isSelected = storageLocation === locationName;
+                    const isEditingThis = editingLocationIndex === index;
+
+                    if (isEditingThis) {
+                      return (
+                        <div key={index} className="p-2 bg-amber-50/70 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingLocationText}
+                            onChange={e => setEditingLocationText(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveEditLocation(index);
+                              } else if (e.key === 'Escape') {
+                                setEditingLocationIndex(null);
+                              }
+                            }}
+                            className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-amber-300 focus:ring-1 focus:ring-amber-500 bg-white font-medium text-gray-800"
+                            placeholder="Nome do lugar..."
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditLocation(index)}
+                            className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs"
+                            title="Salvar alteração"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingLocationIndex(null)}
+                            className="p-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-bold"
+                            title="Cancelar edição"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={locationName + index}
+                        className={`w-full px-3.5 py-2.5 hover:bg-emerald-50 transition flex items-center justify-between text-sm group ${
+                          isSelected ? 'bg-emerald-50/80 font-bold text-emerald-900' : 'text-gray-700 font-medium'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStorageLocation(locationName);
+                            setShowLocationDropdown(false);
+                          }}
+                          className="flex-1 text-left flex items-center gap-2 truncate mr-2"
+                        >
+                          <span className="text-emerald-600 text-xs shrink-0">📍</span>
+                          <span className="truncate">{locationName}</span>
+                          {isSelected && <Check size={16} className="text-emerald-600 shrink-0 ml-1" />}
+                        </button>
+
+                        <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingLocationIndex(index);
+                              setEditingLocationText(locationName);
+                            }}
+                            className="p-1 text-gray-400 hover:text-emerald-700 hover:bg-white rounded-md transition"
+                            title="Editar este nome"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteLocation(index, e)}
+                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-white rounded-md transition"
+                            title="Excluir este lugar da lista"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             )}
 
-            {/* Tags rápidas de atalho */}
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              <span className="text-[11px] text-gray-400 self-center mr-1">Atalhos:</span>
-              {['Estante Rua A', 'Estante Rua B', 'Gaveta A', 'Gaveta B', 'Prateleira 1', 'Prateleira 2'].map(tag => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => setStorageLocation(tag)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition ${
-                    storageLocation === tag 
-                      ? 'bg-emerald-700 text-white border-emerald-700 font-bold shadow-xs'
-                      : 'bg-gray-50 hover:bg-emerald-50 text-gray-600 border-gray-200 hover:border-emerald-300 font-medium'
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
+            {/* Tags rápidas dos 6 primeiros lugares */}
+            {savedLocations.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <span className="text-[11px] text-gray-400 self-center mr-1">Atalhos:</span>
+                {savedLocations.slice(0, 6).map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setStorageLocation(tag)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                      storageLocation === tag 
+                        ? 'bg-emerald-700 text-white border-emerald-700 font-bold shadow-xs'
+                        : 'bg-gray-50 hover:bg-emerald-50 text-gray-600 border-gray-200 hover:border-emerald-300 font-medium'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
