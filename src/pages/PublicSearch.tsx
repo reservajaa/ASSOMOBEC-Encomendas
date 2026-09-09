@@ -497,7 +497,16 @@ export default function PublicSearch() {
                       </div>
                     )}
                     
-                    <div className="p-4 space-y-2 text-xs text-gray-600">
+                    <div className="p-4 space-y-2 text-xs text-gray-600 relative overflow-hidden">
+                      {/* Carimbo RETIRADA no lado direito */}
+                      {pkg.status === 'delivered' && (
+                        <div className="absolute right-3 top-3 pointer-events-none select-none z-10">
+                          <div className="border-[3px] border-dashed border-red-600/85 text-red-600 font-black text-xs sm:text-sm px-3 py-1 rounded-xl rotate-[-12deg] tracking-widest uppercase bg-red-50/50 shadow-xs flex items-center gap-1">
+                            <span>RETIRADA</span>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2">
                         <Calendar size={15} className="text-gray-400" />
                         <span>Chegada: <strong className="text-gray-800">{format(pkg.registeredAt, 'dd/MM/yyyy')}</strong></span>
