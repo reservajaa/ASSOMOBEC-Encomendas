@@ -497,14 +497,28 @@ export default function PublicSearch() {
                       </div>
                     )}
                     <div className="p-4 space-y-2 text-xs text-gray-600 relative overflow-hidden">
-                      {/* Carimbo RETIRADA NA ASSOCIAÇÃO no lado direito */}
+                      {/* Carimbo RETIRADA NA ASSOCIAÇÃO no lado direito com Data e Horário */}
                       {pkg.status === 'delivered' && (
-                        <div className="absolute right-2 sm:right-4 top-2 sm:top-3 pointer-events-none select-none z-10">
-                          <img 
-                            src="/carimbo_retirada.png" 
-                            alt="Carimbo Retirada na Associação" 
-                            className="w-20 h-20 sm:w-24 sm:h-24 object-contain -rotate-12 drop-shadow-md opacity-95 hover:rotate-0 transition-transform"
-                          />
+                        <div className="absolute right-2 sm:right-4 top-2 sm:top-3 pointer-events-none select-none z-10 flex flex-col items-center">
+                          <div className="relative flex flex-col items-center -rotate-12">
+                            <img 
+                              src="/carimbo_retirada.png" 
+                              alt="Carimbo Retirada na Associação" 
+                              className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-md opacity-95"
+                            />
+                            {pkg.deliveredAt && (
+                              <div className="-mt-2 bg-red-700 text-white font-black text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full shadow-md border-2 border-white text-center whitespace-nowrap tracking-wide">
+                                {(() => {
+                                  try {
+                                    const d = new Date(Number(pkg.deliveredAt));
+                                    return !isNaN(d.getTime()) ? format(d, 'dd/MM/yyyy HH:mm') : '';
+                                  } catch {
+                                    return '';
+                                  }
+                                })()}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
 

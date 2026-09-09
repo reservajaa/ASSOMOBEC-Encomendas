@@ -136,12 +136,26 @@ export default function PackageHistory() {
           filteredPackages.map(pkg => (
             <div key={pkg.id} className={`bg-white rounded-2xl border-2 overflow-hidden shadow-sm flex flex-col relative ${pkg.status === 'pending' ? 'border-orange-100' : 'border-gray-200'}`}>
               {pkg.status === 'delivered' && (
-                <div className="absolute right-3 top-12 pointer-events-none select-none z-10">
-                  <img 
-                    src="/carimbo_retirada.png" 
-                    alt="Carimbo Retirada na Associação" 
-                    className="w-16 h-16 sm:w-20 sm:h-20 object-contain -rotate-12 drop-shadow-sm opacity-85"
-                  />
+                <div className="absolute right-3 top-10 pointer-events-none select-none z-10 flex flex-col items-center">
+                  <div className="relative flex flex-col items-center -rotate-12">
+                    <img 
+                      src="/carimbo_retirada.png" 
+                      alt="Carimbo Retirada na Associação" 
+                      className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-sm opacity-90"
+                    />
+                    {pkg.deliveredAt && (
+                      <div className="-mt-1.5 bg-red-700 text-white font-black text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-full shadow-md border border-white text-center whitespace-nowrap">
+                        {(() => {
+                          try {
+                            const d = new Date(Number(pkg.deliveredAt));
+                            return !isNaN(d.getTime()) ? format(d, 'dd/MM/yyyy HH:mm') : '';
+                          } catch {
+                            return '';
+                          }
+                        })()}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               <div className={`p-3 flex justify-between items-center border-b ${pkg.status === 'pending' ? 'bg-orange-50 border-orange-100' : 'bg-gray-50 border-gray-200'}`}>
