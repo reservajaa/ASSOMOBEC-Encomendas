@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getPackages, getResidents, updatePackageStatus, clearAllPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Package, Resident } from '../../types';
-import { Search, Package as PackageIcon, CheckCircle2, Clock, UserRound, Filter, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Package as PackageIcon, CheckCircle2, Clock, UserRound, Filter, Trash2, AlertTriangle, Archive } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -159,6 +159,18 @@ export default function PackageHistory() {
                      <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black/40 transition">
                        <span className="text-white text-xs font-bold">Ver Foto</span>
                      </div>
+                  </div>
+                )}
+                
+                {pkg.storageLocation && (
+                  <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-emerald-950">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <Archive size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Guardado em:</span>
+                      <span className="text-xs font-bold truncate block">{pkg.storageLocation}</span>
+                    </div>
                   </div>
                 )}
                 

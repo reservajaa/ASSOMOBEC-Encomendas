@@ -161,6 +161,7 @@ async function syncPackagesBackground() {
         carrier: item.carrier || undefined,
         observations: item.observations || undefined,
         recipientCpf: item.recipientCpf || item.recipient_cpf || undefined,
+        storageLocation: item.storageLocation || item.storage_location || undefined,
         registeredAt: Number(item.registeredAt || item.registered_at || Date.now()),
         registeredBy: item.registeredBy || item.registered_by || 'Administrador',
         status: item.status || 'pending',
@@ -412,23 +413,40 @@ export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
 
   (async () => {
     try {
-      await withTimeout(
-        supabase.from('packages').insert([{
-          id: newPackage.id,
-          residentId: newPackage.residentId,
-          photoDataUrl: newPackage.photoDataUrl || null,
-          description: newPackage.description || null,
-          carrier: newPackage.carrier || null,
-          observations: newPackage.observations || null,
-          recipientCpf: newPackage.recipientCpf || null,
-          registeredAt: newPackage.registeredAt,
-          registeredBy: newPackage.registeredBy,
-          status: newPackage.status,
-          deliveredAt: newPackage.deliveredAt || null,
-          deliveredBy: newPackage.deliveredBy || null
-        }]),
+      const payload: any = {
+        id: newPackage.id,
+        residentId: newPackage.residentId,
+        photoDataUrl: newPackage.photoDataUrl || null,
+        description: newPackage.description || null,
+        carrier: newPackage.carrier || null,
+        observations: newPackage.observations || null,
+        recipientCpf: newPackage.recipientCpf || null,
+        storageLocation: newPackage.storageLocation || null,
+        registeredAt: newPackage.registeredAt,
+        registeredBy: newPackage.registeredBy,
+        status: newPackage.status,
+        deliveredAt: newPackage.deliveredAt || null,
+        deliveredBy: newPackage.deliveredBy || null
+      };
+
+      const { error } = await withTimeout(
+        supabase.from('packages').insert([payload]),
         4000
       );
+
+      // Se a coluna storageLocation não existir no Supabase, tenta salvar sem a coluna e anexa nas observações
+      if (error && error.message && error.message.includes('storageLocation')) {
+        delete payload.storageLocation;
+        if (newPackage.storageLocation) {
+          payload.observations = payload.observations 
+            ? `[Local: ${newPackage.storageLocation}] ${payload.observations}`
+            : `[Local: ${newPackage.storageLocation}]`;
+        }
+        await withTimeout(
+          supabase.from('packages').insert([payload]),
+          4000
+        );
+      }
     } catch (e) {}
   })();
 

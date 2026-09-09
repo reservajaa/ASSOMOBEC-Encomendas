@@ -27,6 +27,7 @@ export interface Package {
   carrier?: string;
   observations?: string;
   recipientCpf?: string;
+  storageLocation?: string; // Local onde o pacote está guardado (ex: Estante Rua das Flores, Gaveta A, Prateleira 2)
   registeredAt: number;
   registeredBy: string; // admin user ID or name
   status: PackageStatus;

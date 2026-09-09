@@ -503,6 +503,12 @@ export default function PublicSearch() {
                            <strong className="text-gray-700">Transportadora:</strong> {pkg.carrier}
                          </div>
                       )}
+                      {pkg.storageLocation && (
+                         <div className="text-xs bg-emerald-50 p-2 rounded-lg border border-emerald-200 text-emerald-900 font-medium flex items-center gap-1.5">
+                           <span>📍</span>
+                           <span><strong>Local na Portaria:</strong> {pkg.storageLocation}</span>
+                         </div>
+                      )}
                       {pkg.observations && (
                          <div className="text-xs bg-amber-50/70 p-2 rounded-lg border border-amber-100 text-amber-900">
                            <strong>Observações:</strong> {pkg.observations}

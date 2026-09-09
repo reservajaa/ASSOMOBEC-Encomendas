@@ -1,10 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, addResident, addPackage, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
-import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, ChevronDown } from 'lucide-react';
+import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, ChevronDown, Archive, Layers, Bookmark } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+
+const STORAGE_LOCATION_SHORTCUTS = [
+  'Estante Rua Principal',
+  'Estante Rua A',
+  'Estante Rua B',
+  'Estante Rua C',
+  'Prateleira 1',
+  'Prateleira 2',
+  'Prateleira 3',
+  'Prateleira 4',
+  'Gaveta A',
+  'Gaveta B',
+  'Gaveta C',
+  'Caixa 01',
+  'Caixa 02',
+  'Caixa 03',
+  'Armário 01',
+  'Armário 02',
+  'Chão / Volume Grande'
+];
 
 const CARRIER_OPTIONS = [
   { label: 'Mercado Livre', icon: '🟡' },
@@ -49,6 +69,9 @@ export default function RegisterPackage() {
   const [carrier, setCarrier] = useState('');
   const [showCarrierDropdown, setShowCarrierDropdown] = useState(false);
   const carrierDropdownRef = useRef<HTMLDivElement>(null);
+  const [storageLocation, setStorageLocation] = useState('');
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const locationDropdownRef = useRef<HTMLDivElement>(null);
   const [recipientCpf, setRecipientCpf] = useState('');
   const [observations, setObservations] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,11 +79,14 @@ export default function RegisterPackage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fecha dropdown de transportadora ao clicar fora
+  // Fecha dropdowns ao clicar fora
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (carrierDropdownRef.current && !carrierDropdownRef.current.contains(event.target as Node)) {
         setShowCarrierDropdown(false);
+      }
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(event.target as Node)) {
+        setShowLocationDropdown(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -215,6 +241,7 @@ export default function RegisterPackage() {
         residentId: selectedResident.id,
         photoDataUrl: photo || undefined,
         carrier,
+        storageLocation: storageLocation.trim() || undefined,
         observations,
         recipientCpf: recipientCpf || undefined,
         registeredAt: Date.now(),
@@ -238,8 +265,8 @@ export default function RegisterPackage() {
         // Se estiver num textarea, deixa pular linha com Enter normal
         if (e.target instanceof HTMLTextAreaElement) return;
 
-        // Se o dropdown de transportadora estiver aberto ou pesquisando morador sem ter selecionado ainda
-        if (showCarrierDropdown) return;
+        // Se o dropdown de transportadora ou de localização estiver aberto
+        if (showCarrierDropdown || showLocationDropdown) return;
         if (!selectedResident && searchTerm.trim().length > 0) return;
 
         if (selectedResident && !loading) {
@@ -251,7 +278,7 @@ export default function RegisterPackage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedResident, photo, carrier, observations, recipientCpf, loading, showCarrierDropdown, searchTerm, user]);
+  }, [selectedResident, photo, carrier, storageLocation, observations, recipientCpf, loading, showCarrierDropdown, showLocationDropdown, searchTerm, user]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-20">
@@ -496,6 +523,99 @@ export default function RegisterPackage() {
                   })()}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Onde a Encomenda está Guardada (Estante por Rua, Gaveta, Prateleira) */}
+          <div ref={locationDropdownRef} className="relative">
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-sm font-bold text-gray-700 flex items-center gap-1.5">
+                <Archive size={17} className="text-emerald-700" />
+                Lugar onde a Encomenda está Guardada / Separada
+              </label>
+              {storageLocation && (
+                <button
+                  type="button"
+                  onClick={() => setStorageLocation('')}
+                  className="text-xs text-gray-400 hover:text-red-500 font-medium"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
+              <input
+                type="text"
+                value={storageLocation}
+                onFocus={() => setShowLocationDropdown(true)}
+                onClick={() => setShowLocationDropdown(true)}
+                onChange={(e) => {
+                  setStorageLocation(e.target.value);
+                  setShowLocationDropdown(true);
+                }}
+                className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 text-sm font-semibold text-gray-800 bg-white placeholder:text-gray-400 placeholder:font-normal"
+                placeholder="Ex: Estante Rua A, Gaveta 3, Prateleira 2..."
+              />
+              <Bookmark size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" />
+              <button
+                type="button"
+                onClick={() => setShowLocationDropdown(!showLocationDropdown)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                title="Ver sugestões de locais"
+              >
+                <ChevronDown size={18} className={`transition-transform duration-200 ${showLocationDropdown ? 'rotate-180 text-emerald-600' : ''}`} />
+              </button>
+            </div>
+
+            {/* Menu Dropdown com sugestões de estantes, gavetas e prateleiras */}
+            {showLocationDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-30 max-h-56 overflow-y-auto divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-100">
+                <div className="p-2 bg-emerald-50/70 border-b border-emerald-100 text-[11px] font-bold text-emerald-900 flex items-center gap-1">
+                  <Layers size={13} /> Escolha uma opção ou digite livremente acima:
+                </div>
+                {STORAGE_LOCATION_SHORTCUTS.map(locationName => {
+                  const isSelected = storageLocation === locationName;
+                  return (
+                    <button
+                      key={locationName}
+                      type="button"
+                      onClick={() => {
+                        setStorageLocation(locationName);
+                        setShowLocationDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 hover:bg-emerald-50 transition flex items-center justify-between text-sm ${
+                        isSelected ? 'bg-emerald-50 font-bold text-emerald-900' : 'text-gray-700 font-medium'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="text-emerald-600 font-bold text-xs">📍</span>
+                        <span>{locationName}</span>
+                      </span>
+                      {isSelected && <Check size={16} className="text-emerald-600 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Tags rápidas de atalho */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="text-[11px] text-gray-400 self-center mr-1">Atalhos:</span>
+              {['Estante Rua A', 'Estante Rua B', 'Gaveta A', 'Gaveta B', 'Prateleira 1', 'Prateleira 2'].map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setStorageLocation(tag)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+                    storageLocation === tag 
+                      ? 'bg-emerald-700 text-white border-emerald-700 font-bold shadow-xs'
+                      : 'bg-gray-50 hover:bg-emerald-50 text-gray-600 border-gray-200 hover:border-emerald-300 font-medium'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
             </div>
           </div>
 
