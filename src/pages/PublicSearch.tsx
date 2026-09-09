@@ -465,23 +465,35 @@ export default function PublicSearch() {
                 </div>
               ) : (
                 packages.map((pkg, index) => (
-                  <div key={pkg.id} className="border-2 border-gray-100 rounded-2xl overflow-hidden relative shadow-xs bg-white">
-                    {pkg.status === 'delivered' && (
-                      <div className="absolute top-0 left-0 right-0 bottom-0 bg-white/70 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                         <span className="bg-gray-800 text-white font-bold px-4 py-1.5 rounded-full rotate-[-12deg] border-2 border-white shadow-lg text-xs tracking-wider">RETIRADA</span>
-                      </div>
-                    )}
-                    
-                    <div className="bg-emerald-50 px-4 py-2.5 border-b border-gray-100 flex justify-between items-center">
-                      <span className="font-bold text-emerald-900 text-xs">PACOTE #{packages.length - index}</span>
-                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${pkg.status === 'pending' ? 'bg-orange-100 text-orange-800 border border-orange-200' : 'bg-gray-200 text-gray-700'}`}>
-                        {pkg.status === 'pending' ? 'Aguardando Retirada' : 'Entregue'}
+                  <div key={pkg.id} className="border-2 border-gray-100 rounded-2xl overflow-hidden relative shadow-sm bg-white">
+                    <div className={`px-4 py-2.5 border-b flex justify-between items-center ${
+                      pkg.status === 'pending' ? 'bg-emerald-50 border-gray-100' : 'bg-gray-100/80 border-gray-200'
+                    }`}>
+                      <span className="font-bold text-gray-800 text-xs">PACOTE #{packages.length - index}</span>
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                        pkg.status === 'pending' 
+                          ? 'bg-orange-100 text-orange-800 border border-orange-200' 
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      }`}>
+                        {pkg.status === 'pending' ? 'Aguardando Retirada' : '✓ Encomenda Retirada'}
                       </span>
                     </div>
                     
                     {pkg.photoDataUrl && (
-                      <div className="aspect-video w-full bg-black relative">
-                        <img src={pkg.photoDataUrl} alt="Foto da encomenda" className="w-full h-full object-contain" />
+                      <div className="aspect-video w-full bg-black relative group overflow-hidden">
+                        <img 
+                          src={pkg.photoDataUrl} 
+                          alt="Foto da encomenda" 
+                          className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105" 
+                          onClick={() => window.open(pkg.photoDataUrl, '_blank')}
+                        />
+                        {pkg.status === 'delivered' && (
+                          <div className="absolute top-2.5 right-2.5">
+                            <span className="bg-emerald-600/90 backdrop-blur-xs text-white font-bold text-[11px] px-3 py-1 rounded-full shadow-md border border-white/40 flex items-center gap-1">
+                              ✓ RETIRADA
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
                     
