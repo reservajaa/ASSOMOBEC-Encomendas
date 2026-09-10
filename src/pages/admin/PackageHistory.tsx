@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getPackages, getResidents, updatePackageStatus, clearAllPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Package, Resident } from '../../types';
-import { Search, Package as PackageIcon, CheckCircle2, Clock, UserRound, Filter, Trash2, AlertTriangle, Archive } from 'lucide-react';
+import { Search, Package as PackageIcon, UserRound, Trash2, AlertTriangle, Archive, ShieldAlert, SmartphoneNfc, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
@@ -17,6 +17,13 @@ export default function PackageHistory() {
   const [confirmDeliveryId, setConfirmDeliveryId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Estados para verificação por código de segurança
+  const [verifyStep, setVerifyStep] = useState<'idle' | 'code-sent' | 'confirmed'>('idle');
+  const [securityCode, setSecurityCode] = useState('');
+  const [enteredCode, setEnteredCode] = useState('');
+  const [codeError, setCodeError] = useState(false);
+  const ADMIN_PHONE_KEY = 'assomobec_admin_phone';
 
   useEffect(() => {
     loadData();
@@ -50,18 +57,66 @@ export default function PackageHistory() {
     }
   };
 
+  // Passo 1: Gerar código e abrir WhatsApp
+  const handleRequestDeleteCode = () => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setSecurityCode(code);
+    setEnteredCode('');
+    setCodeError(false);
+
+    const adminPhone = localStorage.getItem(ADMIN_PHONE_KEY) || '';
+    const phoneClean = adminPhone.replace(/\D/g, '');
+    const msg = encodeURIComponent(
+      `⚠️ ASSOMOBEC - Código de Segurança\n\nSeu código para APAGAR TODO O HISTÓRICO de encomendas é:\n\n🔑 *${code}*\n\nEste código é válido por 5 minutos. NÃO compartilhe com ninguém.`
+    );
+
+    if (phoneClean.length >= 10) {
+      const waUrl = `https://wa.me/55${phoneClean}?text=${msg}`;
+      window.open(waUrl, '_blank');
+      toast.success('Código gerado! Verifique seu WhatsApp.');
+    } else {
+      // Sem telefone cadastrado: mostra em tela (alerta)
+      toast(`Código gerado: ${code} (cadastre seu celular em Configurações para receber via WhatsApp)`, { icon: '🔑', duration: 10000 });
+    }
+
+    setVerifyStep('code-sent');
+  };
+
+  // Passo 2: Verificar código digitado
+  const handleVerifyCode = () => {
+    if (enteredCode.trim() === securityCode) {
+      setVerifyStep('confirmed');
+      setCodeError(false);
+    } else {
+      setCodeError(true);
+      toast.error('Código incorreto! Verifique e tente novamente.');
+    }
+  };
+
+  // Passo 3: Apagar histórico (após confirmação do código)
   const handleClearAllHistory = async () => {
     setIsDeleting(true);
     try {
       await clearAllPackages();
       toast.success('Todo o histórico de encomendas foi apagado com sucesso!');
       setShowDeleteModal(false);
+      setVerifyStep('idle');
+      setSecurityCode('');
+      setEnteredCode('');
       await loadData();
     } catch (e) {
       toast.error('Erro ao apagar histórico.');
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleCloseDeleteModal = () => {
+    setShowDeleteModal(false);
+    setVerifyStep('idle');
+    setSecurityCode('');
+    setEnteredCode('');
+    setCodeError(false);
   };
 
   const filteredPackages = packages.filter(pkg => {
@@ -232,41 +287,151 @@ export default function PackageHistory() {
         )}
       </div>
 
-      {/* Modal de Confirmação para Apagar Todo o Histórico */}
+      {/* Modal de Verificação por Código para Apagar Todo o Histórico */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto shadow-inner">
-              <AlertTriangle size={32} />
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-5">
+            
+            {/* Ícone */}
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-inner ${
+              verifyStep === 'confirmed' ? 'bg-emerald-100 text-emerald-600' :
+              verifyStep === 'code-sent' ? 'bg-blue-100 text-blue-600' :
+              'bg-red-100 text-red-600'
+            }`}>
+              {verifyStep === 'confirmed'
+                ? <CheckCircle2 size={34} />
+                : verifyStep === 'code-sent'
+                ? <SmartphoneNfc size={34} />
+                : <ShieldAlert size={34} />}
             </div>
 
-            <div className="text-center space-y-2">
-              <h3 className="text-xl font-bold text-gray-900">Apagar Todo o Histórico?</h3>
-              <p className="text-sm text-gray-500">
-                Esta ação apagará <strong>todas as {packages.length} encomendas</strong> (pendentes e entregues) do sistema e do banco de dados. Esta ação não poderá ser desfeita.
-              </p>
-            </div>
+            {/* STEP 1 — Aviso inicial */}
+            {verifyStep === 'idle' && (
+              <>
+                <div className="text-center space-y-2">
+                  <h3 className="text-xl font-bold text-gray-900">Apagar Todo o Histórico?</h3>
+                  <p className="text-sm text-gray-500">
+                    Esta ação apagará <strong>todas as {packages.length} encomendas</strong> do sistema. Esta ação <strong className="text-red-600">não poderá ser desfeita</strong>.
+                  </p>
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-800 font-medium mt-3">
+                    🔒 Por segurança, enviaremos um <strong>código de verificação</strong> para o WhatsApp do administrador.
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleRequestDeleteCode}
+                    className="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
+                  >
+                    <SmartphoneNfc size={18} />
+                    Enviar Código de Verificação
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCloseDeleteModal}
+                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
 
-            <div className="pt-2 flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={handleClearAllHistory}
-                className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Trash2 size={18} />
-                {isDeleting ? 'Apagando histórico...' : 'Sim, Apagar Todo o Histórico'}
-              </button>
+            {/* STEP 2 — Digitar o código recebido */}
+            {verifyStep === 'code-sent' && (
+              <>
+                <div className="text-center space-y-2">
+                  <h3 className="text-xl font-bold text-gray-900">Digite o Código de Verificação</h3>
+                  <p className="text-sm text-gray-500">
+                    Um código de <strong>6 dígitos</strong> foi enviado para o WhatsApp do administrador. Digite-o abaixo para confirmar.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="000000"
+                    value={enteredCode}
+                    onChange={(e) => {
+                      setEnteredCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setCodeError(false);
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && enteredCode.length === 6 && handleVerifyCode()}
+                    className={`w-full text-center text-3xl font-black tracking-[0.5em] py-4 rounded-2xl border-2 transition outline-none ${
+                      codeError
+                        ? 'border-red-400 bg-red-50 text-red-700 animate-pulse'
+                        : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                    }`}
+                    autoFocus
+                  />
+                  {codeError && (
+                    <p className="text-red-600 text-xs font-bold text-center">❌ Código incorreto. Verifique e tente novamente.</p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={handleVerifyCode}
+                    disabled={enteredCode.length !== 6}
+                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 size={18} />
+                    Confirmar Código
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRequestDeleteCode}
+                    className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium text-sm rounded-xl transition border border-gray-200"
+                  >
+                    🔄 Reenviar Código
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCloseDeleteModal}
+                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
 
-              <button
-                type="button"
-                disabled={isDeleting}
-                onClick={() => setShowDeleteModal(false)}
-                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
-              >
-                Cancelar
-              </button>
-            </div>
+            {/* STEP 3 — Código correto, confirmar exclusão */}
+            {verifyStep === 'confirmed' && (
+              <>
+                <div className="text-center space-y-2">
+                  <h3 className="text-xl font-bold text-emerald-700">✅ Código Verificado!</h3>
+                  <p className="text-sm text-gray-500">
+                    Identidade confirmada. Clique abaixo para apagar definitivamente
+                    <strong> todas as {packages.length} encomendas</strong> do histórico.
+                  </p>
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-800 font-medium">
+                    ⚠️ Esta ação é <strong>irreversível</strong>. O histórico será apagado permanentemente.
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleClearAllHistory}
+                    className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={18} />
+                    {isDeleting ? 'Apagando histórico...' : 'Sim, Apagar Todo o Histórico Agora'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleCloseDeleteModal}
+                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
+
           </div>
         </div>
       )}
