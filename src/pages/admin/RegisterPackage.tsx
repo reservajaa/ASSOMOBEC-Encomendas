@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, addResident, addPackage, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
-import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, ChevronDown, Archive, Layers, Bookmark, Edit2, Trash2, X } from 'lucide-react';
+import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, ChevronDown, Archive, Layers, Bookmark, Edit2, Trash2, X, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import Tesseract from 'tesseract.js';
 
 const DEFAULT_STORAGE_LOCATIONS = [
   'Estante Rua Principal',
@@ -204,39 +205,234 @@ export default function RegisterPackage() {
     setIsCreatingNew(false);
   };
 
+  // Função inteligente para detectar Transportadora / Loja a partir de qualquer texto da imagem
+  const detectCarrierFromText = (text: string): string | null => {
+    if (!text) return null;
+    const upper = text.toUpperCase();
+
+    // 1. Mercado Livre / Envios
+    if (
+      upper.includes('MERCADO LIVRE') ||
+      upper.includes('MERCADOLIVRE') ||
+      upper.includes('MERCADO ENVIOS') ||
+      upper.includes('MERCADOENVIOS') ||
+      upper.includes('MELI') ||
+      upper.includes('ENVIO FULL') ||
+      upper.includes('MERCADO PAGO') ||
+      /\bML[0-9A-Z]/.test(upper)
+    ) {
+      return 'Mercado Livre';
+    }
+
+    // 2. Shopee / SPX
+    if (
+      upper.includes('SHOPEE') ||
+      upper.includes('SPX') ||
+      upper.includes('SHP') ||
+      upper.includes('SHOPEE EXPRESS')
+    ) {
+      return 'Shopee';
+    }
+
+    // 3. Amazon
+    if (
+      upper.includes('AMAZON') ||
+      upper.includes('AMZN') ||
+      upper.includes('PRIME')
+    ) {
+      return 'Amazon';
+    }
+
+    // 4. Shein
+    if (upper.includes('SHEIN')) {
+      return 'Shein';
+    }
+
+    // 5. AliExpress / Cainiao
+    if (
+      upper.includes('ALIEXPRESS') ||
+      upper.includes('ALI EXPRESS') ||
+      upper.includes('CAINIAO')
+    ) {
+      return 'AliExpress';
+    }
+
+    // 6. Magalu / Magazine Luiza
+    if (
+      upper.includes('MAGALU') ||
+      upper.includes('MAGAZINE LUIZA') ||
+      upper.includes('MAGALOG')
+    ) {
+      return 'Magazine Luiza (Magalu)';
+    }
+
+    // 7. Correios
+    if (
+      upper.includes('CORREIOS') ||
+      upper.includes('SEDEX') ||
+      upper.includes('PAC') ||
+      upper.includes('ECT') ||
+      upper.includes('EMPRESA BRASILEIRA DE CORREIOS')
+    ) {
+      return 'Correios';
+    }
+
+    // 8. Jadlog
+    if (upper.includes('JADLOG') || upper.includes('JAD LOG')) {
+      return 'Jadlog';
+    }
+
+    // 9. Loggi
+    if (upper.includes('LOGGI')) {
+      return 'Loggi';
+    }
+
+    // 10. Total Express
+    if (
+      upper.includes('TOTAL EXPRESS') ||
+      upper.includes('TOTALEXPRESS') ||
+      upper.includes('TEX LOG')
+    ) {
+      return 'Total Express';
+    }
+
+    // 11. J&T Express
+    if (
+      upper.includes('J&T') ||
+      upper.includes('JT EXPRESS') ||
+      upper.includes('JET EXPRESS') ||
+      upper.includes('J AND T')
+    ) {
+      return 'J&T Express';
+    }
+
+    // 12. TikTok Shop
+    if (upper.includes('TIKTOK')) {
+      return 'TikTok Shop';
+    }
+
+    // 13. Temu
+    if (upper.includes('TEMU')) {
+      return 'Temu';
+    }
+
+    // 14. Azul Cargo
+    if (upper.includes('AZUL CARGO') || upper.includes('AZUL LINHAS')) {
+      return 'Azul Cargo Express';
+    }
+
+    // 15. LATAM Cargo
+    if (upper.includes('LATAM CARGO') || upper.includes('LATAM')) {
+      return 'LATAM Cargo';
+    }
+
+    // 16. Braspress
+    if (upper.includes('BRASPRESS')) {
+      return 'Braspress';
+    }
+
+    // 17. Buslog
+    if (upper.includes('BUSLOG')) {
+      return 'Buslog';
+    }
+
+    // 18. Casas Bahia
+    if (upper.includes('CASAS BAHIA') || upper.includes('VIA VAREJO')) {
+      return 'Casas Bahia';
+    }
+
+    // 19. Americanas
+    if (upper.includes('AMERICANAS') || upper.includes('B2W')) {
+      return 'Americanas';
+    }
+
+    return null;
+  };
+
   const processImageWithAi = async (base64Image: string) => {
     setIsAiProcessing(true);
-    const toastId = toast.loading('IA analisando etiqueta...');
+    const toastId = toast.loading('Analisando etiqueta com IA...');
+    
+    let foundName: string | null = null;
+    let foundCarrier: string | null = null;
+
+    // 1. Tenta API Gemini no backend (se disponível)
     try {
       const response = await fetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64Image })
       });
-      const data = await response.json();
-      
-      if (data.name && data.name !== 'UNKNOWN') {
-        const extractedName = data.name.toUpperCase();
-        setSearchTerm(extractedName);
-        toast.success(`Nome extraído: ${extractedName}`, { id: toastId });
-        
-        // Try to find exact match
-        const match = residents.find(r => r.name === extractedName);
-        if (match) {
-          setSelectedResident(match);
-          setSearchTerm('');
-        } else {
-          setIsCreatingNew(true);
-        }
-      } else {
-        toast.error('Não foi possível identificar o nome na etiqueta.', { id: toastId });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.name && data.name !== 'UNKNOWN') foundName = data.name.toUpperCase();
+        if (data.carrier && data.carrier !== 'UNKNOWN') foundCarrier = data.carrier;
       }
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao processar imagem com IA.', { id: toastId });
-    } finally {
-      setIsAiProcessing(false);
+    } catch (e) {
+      // continua para o OCR local
     }
+
+    // 2. Se a transportadora ou o nome ainda não foram encontrados, usa o Tesseract OCR diretamente no navegador
+    if (!foundCarrier || !foundName) {
+      try {
+        const { data: { text } } = await Tesseract.recognize(base64Image, 'por+eng', {
+          logger: () => {}
+        });
+
+        if (!foundCarrier && text) {
+          const detected = detectCarrierFromText(text);
+          if (detected) foundCarrier = detected;
+        }
+
+        if (!foundName && text) {
+          const upperText = text.toUpperCase();
+          // Tenta cruzar com a lista de moradores já cadastrados
+          for (const res of residents) {
+            if (res.name.length >= 3 && upperText.includes(res.name)) {
+              foundName = res.name;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('OCR local fallback aviso:', err);
+      }
+    }
+
+    // 3. Aplica os dados encontrados aos campos do formulário
+    const detectedInfo: string[] = [];
+
+    if (foundCarrier) {
+      setCarrier(foundCarrier);
+      detectedInfo.push(`📦 Transportadora: ${foundCarrier}`);
+    }
+
+    if (foundName) {
+      setSearchTerm(foundName);
+      const match = residents.find(r => r.name === foundName);
+      if (match) {
+        setSelectedResident(match);
+        setSearchTerm('');
+        detectedInfo.push(`👤 Morador: ${match.name}`);
+      } else {
+        setIsCreatingNew(true);
+        detectedInfo.push(`👤 Destinatário: ${foundName}`);
+      }
+    }
+
+    if (detectedInfo.length > 0) {
+      toast.success(
+        `Leitura realizada com sucesso!\n${detectedInfo.join('\n')}`,
+        { id: toastId, duration: 5000 }
+      );
+    } else {
+      toast(
+        'Não foi possível extrair todos os dados automaticamente. Preencha os campos abaixo.',
+        { id: toastId, icon: 'ℹ️', duration: 4000 }
+      );
+    }
+
+    setIsAiProcessing(false);
   };
 
   const handleCreateNewResident = async () => {

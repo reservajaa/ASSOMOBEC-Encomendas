@@ -16,14 +16,20 @@ app.post("/api/ocr", async (req, res) => {
   const { imageBase64 } = req.body;
   
   if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    return res.status(200).json({ error: "GEMINI_API_KEY is not configured", name: null, carrier: null });
   }
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const prompt = "Analyze this image of a package label and extract only the recipient's name (destinatário). Return only the name in uppercase, nothing else. If you can't find it, return 'UNKNOWN'.";
+    const prompt = `Analise atentamente a foto desta etiqueta de encomenda.
+Identifique com precisão:
+1. "name": O nome completo do destinatário (morador). Se não encontrar, coloque null.
+2. "carrier": A transportadora ou loja (ex: Mercado Livre, Shopee, Amazon, Shein, Correios, Jadlog, Loggi, Total Express, Magazine Luiza, AliExpress, Casas Bahia, Americanas, etc.). Se não encontrar, coloque null.
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido:
+{"name": "NOME DO DESTINATARIO EM MAIUSCULAS", "carrier": "Nome da Transportadora ou Loja"}`;
     
     const result = await model.generateContent([
       prompt,
@@ -36,12 +42,21 @@ app.post("/api/ocr", async (req, res) => {
     ]);
 
     const response = await result.response;
-    const name = response.text().trim();
+    const raw = response.text().trim();
     
-    res.json({ name });
+    try {
+      const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      res.json({
+        name: parsed.name && parsed.name !== 'UNKNOWN' ? parsed.name : null,
+        carrier: parsed.carrier && parsed.carrier !== 'UNKNOWN' ? parsed.carrier : null
+      });
+    } catch {
+      res.json({ name: raw !== 'UNKNOWN' ? raw : null, carrier: null });
+    }
   } catch (error: any) {
     console.error("Gemini OCR error:", error);
-    res.status(500).json({ error: "Failed to process image with AI." });
+    res.status(200).json({ error: "Failed to process image with AI.", name: null, carrier: null });
   }
 });
 
