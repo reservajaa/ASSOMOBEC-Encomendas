@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { getPackages, getResidents, updatePackageStatus, clearAllPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Package, Resident } from '../../types';
-import { Search, Package as PackageIcon, UserRound, Trash2, AlertTriangle, Archive, ShieldAlert, SmartphoneNfc, CheckCircle2 } from 'lucide-react';
+import { Search, Package as PackageIcon, UserRound, Trash2, AlertTriangle, Archive, ShieldAlert, KeyRound, Eye, EyeOff, Lock } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+
+// Hash SHA-256 da senha mestra "#Senhasecreta2e"
+const MASTER_PWD_HASH = '33dae45765977fa3a04d10ad249950647f2d1a71eec61f342280bc6508401308';
 
 export default function PackageHistory() {
   const { user } = useAuth();
@@ -18,12 +21,10 @@ export default function PackageHistory() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Estados para verificação por código de segurança
-  const [verifyStep, setVerifyStep] = useState<'idle' | 'code-sent' | 'confirmed'>('idle');
-  const [securityCode, setSecurityCode] = useState('');
-  const [enteredCode, setEnteredCode] = useState('');
-  const [codeError, setCodeError] = useState(false);
-  const ADMIN_PHONE_KEY = 'assomobec_admin_phone';
+  // Estados para verificação por Senha Mestra
+  const [masterPasswordInput, setMasterPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -57,60 +58,42 @@ export default function PackageHistory() {
     }
   };
 
-  // Passo 1: Gerar código e enviar via SMS
-  const handleRequestDeleteCode = () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setSecurityCode(code);
-    setEnteredCode('');
-    setCodeError(false);
-
-    const adminPhone = localStorage.getItem(ADMIN_PHONE_KEY) || '';
-    const phoneClean = adminPhone.replace(/\D/g, '');
-    const smsMessage = `ASSOMOBEC: Seu codigo de seguranca para APAGAR O HISTORICO e: ${code}. Valido por 5 minutos.`;
-
-    if (phoneClean.length >= 10) {
-      // Disparo de SMS pelo protocolo universal sms:
-      const smsUrl = `sms:+55${phoneClean}?body=${encodeURIComponent(smsMessage)}`;
-      try {
-        const link = document.createElement('a');
-        link.href = smsUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (err) {
-        window.open(smsUrl, '_blank');
-      }
-
-      toast.success(`Código enviado por SMS para ${adminPhone}!`, { duration: 6000 });
-    } else {
-      // Sem telefone cadastrado: mostra em tela com aviso
-      toast(`Código gerado: ${code} (cadastre o celular em Configurações para receber por SMS)`, { icon: '🔑', duration: 10000 });
-    }
-
-    setVerifyStep('code-sent');
-  };
-
-  // Passo 2: Verificar código digitado
-  const handleVerifyCode = () => {
-    if (enteredCode.trim() === securityCode) {
-      setVerifyStep('confirmed');
-      setCodeError(false);
-    } else {
-      setCodeError(true);
-      toast.error('Código incorreto! Verifique e tente novamente.');
+  // Validação da Senha Mestra
+  const checkMasterPassword = async (pwd: string) => {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(pwd);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hashHex === MASTER_PWD_HASH || pwd === '#Senhasecreta2e';
+    } catch {
+      return pwd === '#Senhasecreta2e';
     }
   };
 
-  // Passo 3: Apagar histórico (após confirmação do código)
-  const handleClearAllHistory = async () => {
+  // Confirmar e Apagar Histórico com Senha Mestra
+  const handleConfirmClearWithPassword = async () => {
+    if (!masterPasswordInput.trim()) {
+      toast.error('Digite a senha mestra para confirmar.');
+      return;
+    }
+
+    const isValid = await checkMasterPassword(masterPasswordInput.trim());
+    if (!isValid) {
+      setPasswordError(true);
+      toast.error('Senha mestra incorreta! Apenas o dono do site pode apagar o histórico.');
+      return;
+    }
+
     setIsDeleting(true);
     try {
       await clearAllPackages();
       toast.success('Todo o histórico de encomendas foi apagado com sucesso!');
       setShowDeleteModal(false);
-      setVerifyStep('idle');
-      setSecurityCode('');
-      setEnteredCode('');
+      setMasterPasswordInput('');
+      setPasswordError(false);
+      setShowPassword(false);
       await loadData();
     } catch (e) {
       toast.error('Erro ao apagar histórico.');
@@ -121,10 +104,9 @@ export default function PackageHistory() {
 
   const handleCloseDeleteModal = () => {
     setShowDeleteModal(false);
-    setVerifyStep('idle');
-    setSecurityCode('');
-    setEnteredCode('');
-    setCodeError(false);
+    setMasterPasswordInput('');
+    setPasswordError(false);
+    setShowPassword(false);
   };
 
   const filteredPackages = packages.filter(pkg => {
@@ -295,150 +277,93 @@ export default function PackageHistory() {
         )}
       </div>
 
-      {/* Modal de Verificação por Código para Apagar Todo o Histórico */}
+      {/* Modal de Confirmação com Senha Mestra para Apagar Todo o Histórico */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-5">
             
-            {/* Ícone */}
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-inner ${
-              verifyStep === 'confirmed' ? 'bg-emerald-100 text-emerald-600' :
-              verifyStep === 'code-sent' ? 'bg-blue-100 text-blue-600' :
-              'bg-red-100 text-red-600'
-            }`}>
-              {verifyStep === 'confirmed'
-                ? <CheckCircle2 size={34} />
-                : verifyStep === 'code-sent'
-                ? <SmartphoneNfc size={34} />
-                : <ShieldAlert size={34} />}
+            {/* Ícone de Alta Segurança */}
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-inner bg-red-100 text-red-600">
+              <ShieldAlert size={36} />
             </div>
 
-            {/* STEP 1 — Aviso inicial */}
-            {verifyStep === 'idle' && (
-              <>
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-bold text-gray-900">Apagar Todo o Histórico?</h3>
-                  <p className="text-sm text-gray-500">
-                    Esta ação apagará <strong>todas as {packages.length} encomendas</strong> do sistema. Esta ação <strong className="text-red-600">não poderá ser desfeita</strong>.
-                  </p>
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-800 font-medium mt-3">
-                    🔒 Por segurança, enviaremos um <strong>código de verificação</strong> por SMS para o celular do administrador.
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleRequestDeleteCode}
-                    className="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
-                  >
-                    <SmartphoneNfc size={18} />
-                    Enviar Código de Verificação por SMS
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCloseDeleteModal}
-                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </>
-            )}
+            {/* Cabeçalho do Modal */}
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-bold text-gray-900">Apagar Todo o Histórico?</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                Esta ação apagará definitivamente <strong>todas as {packages.length} encomendas</strong> do sistema. Esta ação <strong className="text-red-600">não poderá ser desfeita</strong>.
+              </p>
+              
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 font-medium text-left flex items-start gap-2.5 mt-2">
+                <KeyRound size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Acesso Restrito ao Dono do Site:</strong> Para autorizar a exclusão permanente de todas as encomendas, digite a sua <strong>Senha Mestra</strong>.
+                </span>
+              </div>
+            </div>
 
-            {/* STEP 2 — Digitar o código recebido */}
-            {verifyStep === 'code-sent' && (
-              <>
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-bold text-gray-900">Digite o Código de Verificação</h3>
-                  <p className="text-sm text-gray-500">
-                    Um código de <strong>6 dígitos</strong> foi enviado por SMS para o telefone do administrador. Digite-o abaixo para confirmar.
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="000000"
-                    value={enteredCode}
-                    onChange={(e) => {
-                      setEnteredCode(e.target.value.replace(/\D/g, '').slice(0, 6));
-                      setCodeError(false);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && enteredCode.length === 6 && handleVerifyCode()}
-                    className={`w-full text-center text-3xl font-black tracking-[0.5em] py-4 rounded-2xl border-2 transition outline-none ${
-                      codeError
-                        ? 'border-red-400 bg-red-50 text-red-700 animate-pulse'
-                        : 'border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
-                    }`}
-                    autoFocus
-                  />
-                  {codeError && (
-                    <p className="text-red-600 text-xs font-bold text-center">❌ Código incorreto. Verifique e tente novamente.</p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={handleVerifyCode}
-                    disabled={enteredCode.length !== 6}
-                    className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle2 size={18} />
-                    Confirmar Código
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRequestDeleteCode}
-                    className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium text-sm rounded-xl transition border border-gray-200"
-                  >
-                    🔄 Reenviar Código por SMS
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCloseDeleteModal}
-                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </>
-            )}
+            {/* Campo da Senha Mestra */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-gray-700">
+                Senha Mestra do Dono do Site:
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Digite a senha mestra..."
+                  value={masterPasswordInput}
+                  onChange={(e) => {
+                    setMasterPasswordInput(e.target.value);
+                    setPasswordError(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && masterPasswordInput.trim()) {
+                      handleConfirmClearWithPassword();
+                    }
+                  }}
+                  className={`w-full px-4 py-3.5 pr-12 rounded-xl border-2 transition outline-none text-sm font-medium ${
+                    passwordError
+                      ? 'border-red-400 bg-red-50 text-red-800'
+                      : 'border-gray-300 focus:border-red-500 focus:ring-2 focus:ring-red-200'
+                  }`}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition"
+                  title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              {passwordError && (
+                <p className="text-red-600 text-xs font-bold text-center mt-1">
+                  ❌ Senha mestra incorreta! Apenas o dono do site pode apagar o histórico.
+                </p>
+              )}
+            </div>
 
-            {/* STEP 3 — Código correto, confirmar exclusão */}
-            {verifyStep === 'confirmed' && (
-              <>
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-bold text-emerald-700">✅ Código Verificado!</h3>
-                  <p className="text-sm text-gray-500">
-                    Identidade confirmada. Clique abaixo para apagar definitivamente
-                    <strong> todas as {packages.length} encomendas</strong> do histórico.
-                  </p>
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-800 font-medium">
-                    ⚠️ Esta ação é <strong>irreversível</strong>. O histórico será apagado permanentemente.
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2 pt-1">
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    onClick={handleClearAllHistory}
-                    className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
-                  >
-                    <Trash2 size={18} />
-                    {isDeleting ? 'Apagando histórico...' : 'Sim, Apagar Todo o Histórico Agora'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    onClick={handleCloseDeleteModal}
-                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </>
-            )}
+            {/* Botões de Ação */}
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting || !masterPasswordInput.trim()}
+                onClick={handleConfirmClearWithPassword}
+                className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
+              >
+                <Trash2 size={18} />
+                {isDeleting ? 'Apagando histórico...' : 'Confirmar e Apagar Histórico Definitivamente'}
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleCloseDeleteModal}
+                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
+              >
+                Cancelar
+              </button>
+            </div>
 
           </div>
         </div>
