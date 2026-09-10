@@ -5,7 +5,6 @@ import { Camera, Image as ImageIcon, Search, Plus, Check, MapPin, Phone, Chevron
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import Tesseract from 'tesseract.js';
 
 const DEFAULT_STORAGE_LOCATIONS = [
   'Estante Rua Principal',
@@ -351,55 +350,44 @@ export default function RegisterPackage() {
 
   const processImageWithAi = async (base64Image: string) => {
     setIsAiProcessing(true);
-    const toastId = toast.loading('Analisando etiqueta com IA...');
+    const toastId = toast.loading('Lendo etiqueta e identificando dados...');
     
     let foundName: string | null = null;
     let foundCarrier: string | null = null;
 
-    // 1. Tenta API Gemini no backend (se disponível)
     try {
       const response = await fetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64Image })
       });
+      
       if (response.ok) {
         const data = await response.json();
-        if (data.name && data.name !== 'UNKNOWN') foundName = data.name.toUpperCase();
-        if (data.carrier && data.carrier !== 'UNKNOWN') foundCarrier = data.carrier;
-      }
-    } catch (e) {
-      // continua para o OCR local
-    }
+        if (data.carrier) foundCarrier = data.carrier;
+        if (data.name) foundName = data.name.toUpperCase();
 
-    // 2. Se a transportadora ou o nome ainda não foram encontrados, usa o Tesseract OCR diretamente no navegador
-    if (!foundCarrier || !foundName) {
-      try {
-        const { data: { text } } = await Tesseract.recognize(base64Image, 'por+eng', {
-          logger: () => {}
-        });
-
-        if (!foundCarrier && text) {
-          const detected = detectCarrierFromText(text);
-          if (detected) foundCarrier = detected;
-        }
-
-        if (!foundName && text) {
-          const upperText = text.toUpperCase();
-          // Tenta cruzar com a lista de moradores já cadastrados
-          for (const res of residents) {
-            if (res.name.length >= 3 && upperText.includes(res.name)) {
-              foundName = res.name;
-              break;
+        // Se o servidor retornou o texto bruto da imagem, cruza com regras adicionais
+        if (data.text) {
+          if (!foundCarrier) {
+            foundCarrier = detectCarrierFromText(data.text);
+          }
+          if (!foundName) {
+            const upper = data.text.toUpperCase();
+            for (const res of residents) {
+              if (res.name.length >= 3 && upper.includes(res.name)) {
+                foundName = res.name;
+                break;
+              }
             }
           }
         }
-      } catch (err) {
-        console.warn('OCR local fallback aviso:', err);
       }
+    } catch (e) {
+      console.warn('Erro ao chamar /api/ocr:', e);
     }
 
-    // 3. Aplica os dados encontrados aos campos do formulário
+    // Aplica os dados encontrados aos campos do formulário
     const detectedInfo: string[] = [];
 
     if (foundCarrier) {
@@ -423,11 +411,11 @@ export default function RegisterPackage() {
     if (detectedInfo.length > 0) {
       toast.success(
         `Leitura realizada com sucesso!\n${detectedInfo.join('\n')}`,
-        { id: toastId, duration: 5000 }
+        { id: toastId, duration: 6000 }
       );
     } else {
       toast(
-        'Não foi possível extrair todos os dados automaticamente. Preencha os campos abaixo.',
+        'Foto anexada. Não foi possível identificar o nome ou loja automaticamente. Preencha os campos abaixo.',
         { id: toastId, icon: 'ℹ️', duration: 4000 }
       );
     }
