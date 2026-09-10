@@ -125,7 +125,7 @@ export default function Settings() {
             Segurança — Celular do Administrador
           </h3>
           <p className="text-sm text-gray-500 mt-1">
-            Este número de WhatsApp receberá o <strong>código de segurança</strong> quando o administrador tentar apagar o histórico de encomendas.
+            Este número de celular receberá o <strong>código de segurança via SMS</strong> quando o administrador tentar apagar o histórico de encomendas.
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export default function Settings() {
             </div>
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs text-emerald-800 font-medium flex items-center gap-2">
               <ShieldCheck size={15} className="text-emerald-600 shrink-0" />
-              Celular protegido por senha mestra — Pronto para receber código via WhatsApp.
+              Celular protegido por senha mestra — Pronto para receber código via SMS.
             </div>
           </div>
         ) : (
@@ -159,7 +159,7 @@ export default function Settings() {
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                   <Smartphone size={13} className="inline mr-1" />
-                  WhatsApp do Administrador
+                  Celular (SMS) do Administrador
                 </label>
                 <input
                   type="tel"
@@ -190,7 +190,7 @@ export default function Settings() {
             )}
             {!adminPhone && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-800 font-medium flex items-center gap-2">
-                ⚠️ Nenhum celular cadastrado. Salve um número para receber o código via WhatsApp.
+                ⚠️ Nenhum celular cadastrado. Salve um número para receber o código via SMS.
               </div>
             )}
           </div>
@@ -234,7 +234,7 @@ export default function Settings() {
             <div className="text-center space-y-1">
               <h3 className="text-xl font-bold text-gray-900">Senha Mestra</h3>
               <p className="text-sm text-gray-500">
-                Digite a senha mestra do dono do site para desbloquear e editar o número de WhatsApp.
+                Digite a senha mestra do dono do site para desbloquear e editar o número de celular.
               </p>
             </div>
 

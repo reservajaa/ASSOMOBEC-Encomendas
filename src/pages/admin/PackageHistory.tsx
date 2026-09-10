@@ -57,7 +57,7 @@ export default function PackageHistory() {
     }
   };
 
-  // Passo 1: Gerar código e abrir WhatsApp
+  // Passo 1: Gerar código e enviar via SMS
   const handleRequestDeleteCode = () => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setSecurityCode(code);
@@ -66,17 +66,25 @@ export default function PackageHistory() {
 
     const adminPhone = localStorage.getItem(ADMIN_PHONE_KEY) || '';
     const phoneClean = adminPhone.replace(/\D/g, '');
-    const msg = encodeURIComponent(
-      `⚠️ ASSOMOBEC - Código de Segurança\n\nSeu código para APAGAR TODO O HISTÓRICO de encomendas é:\n\n🔑 *${code}*\n\nEste código é válido por 5 minutos. NÃO compartilhe com ninguém.`
-    );
+    const smsMessage = `ASSOMOBEC: Seu codigo de seguranca para APAGAR O HISTORICO e: ${code}. Valido por 5 minutos.`;
 
     if (phoneClean.length >= 10) {
-      const waUrl = `https://wa.me/55${phoneClean}?text=${msg}`;
-      window.open(waUrl, '_blank');
-      toast.success('Código gerado! Verifique seu WhatsApp.');
+      // Disparo de SMS pelo protocolo universal sms:
+      const smsUrl = `sms:+55${phoneClean}?body=${encodeURIComponent(smsMessage)}`;
+      try {
+        const link = document.createElement('a');
+        link.href = smsUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        window.open(smsUrl, '_blank');
+      }
+
+      toast.success(`Código enviado por SMS para ${adminPhone}!`, { duration: 6000 });
     } else {
-      // Sem telefone cadastrado: mostra em tela (alerta)
-      toast(`Código gerado: ${code} (cadastre seu celular em Configurações para receber via WhatsApp)`, { icon: '🔑', duration: 10000 });
+      // Sem telefone cadastrado: mostra em tela com aviso
+      toast(`Código gerado: ${code} (cadastre o celular em Configurações para receber por SMS)`, { icon: '🔑', duration: 10000 });
     }
 
     setVerifyStep('code-sent');
@@ -314,7 +322,7 @@ export default function PackageHistory() {
                     Esta ação apagará <strong>todas as {packages.length} encomendas</strong> do sistema. Esta ação <strong className="text-red-600">não poderá ser desfeita</strong>.
                   </p>
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-800 font-medium mt-3">
-                    🔒 Por segurança, enviaremos um <strong>código de verificação</strong> para o WhatsApp do administrador.
+                    🔒 Por segurança, enviaremos um <strong>código de verificação</strong> por SMS para o celular do administrador.
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 pt-1">
@@ -324,7 +332,7 @@ export default function PackageHistory() {
                     className="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
                   >
                     <SmartphoneNfc size={18} />
-                    Enviar Código de Verificação
+                    Enviar Código de Verificação por SMS
                   </button>
                   <button
                     type="button"
@@ -343,7 +351,7 @@ export default function PackageHistory() {
                 <div className="text-center space-y-2">
                   <h3 className="text-xl font-bold text-gray-900">Digite o Código de Verificação</h3>
                   <p className="text-sm text-gray-500">
-                    Um código de <strong>6 dígitos</strong> foi enviado para o WhatsApp do administrador. Digite-o abaixo para confirmar.
+                    Um código de <strong>6 dígitos</strong> foi enviado por SMS para o telefone do administrador. Digite-o abaixo para confirmar.
                   </p>
                 </div>
                 <div className="space-y-3">
@@ -384,7 +392,7 @@ export default function PackageHistory() {
                     onClick={handleRequestDeleteCode}
                     className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-600 font-medium text-sm rounded-xl transition border border-gray-200"
                   >
-                    🔄 Reenviar Código
+                    🔄 Reenviar Código por SMS
                   </button>
                   <button
                     type="button"
