@@ -36,6 +36,13 @@ function AdminLayout() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ao pressionar a tecla Esc (Escape), volta imediatamente para o Dashboard
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        navigate('/admin/dashboard');
+        return;
+      }
+
       // Avoid triggering when user is typing in an input/textarea
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -130,6 +137,7 @@ export default function App() {
           <Route path="/" element={<PublicSearch />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route element={<ProtectedRoute />}>
+            <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
             <Route element={<AdminLayout />}>
               <Route path="/admin/dashboard" element={<Dashboard />} />
               <Route path="/admin/register" element={<RegisterPackage />} />
