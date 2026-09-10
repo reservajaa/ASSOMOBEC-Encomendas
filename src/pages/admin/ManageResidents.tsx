@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { getResidents, addResident, updateResident, deleteResident, getPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
-import { Search, UserPlus, Package as PackageIcon, Edit2, Trash2, CheckSquare, Square, X, Check, MapPin, Phone, UserRound, CheckCircle2 } from 'lucide-react';
+import { Search, UserPlus, Package as PackageIcon, Edit2, Trash2, CheckSquare, Square, X, Check, MapPin, Phone, UserRound, CheckCircle2, ShieldAlert, KeyRound, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+
+// Hash SHA-256 da senha mestra "#Senhasecreta2e"
+const MASTER_PWD_HASH = '33dae45765977fa3a04d10ad249950647f2d1a71eec61f342280bc6508401308';
 
 export default function ManageResidents() {
   const [residents, setResidents] = useState<(Resident & { pendingCount: number; deliveredCount: number; totalCount: number })[]>([]);
@@ -26,6 +29,17 @@ export default function ManageResidents() {
   const [editCpf, setEditCpf] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editAddress, setEditAddress] = useState('');
+
+  // Estados para segurança e exclusão com Senha Mestra
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { type: 'single'; id: string; name: string }
+    | { type: 'bulk'; count: number; ids: string[] }
+    | null
+  >(null);
+  const [masterPasswordInput, setMasterPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -144,32 +158,92 @@ export default function ManageResidents() {
     }
   };
 
-  const handleDeleteSingle = async (id: string) => {
+  // Iniciar exclusão de um único morador com Senha Mestra
+  const promptDeleteSingle = (res: { id: string; name: string }) => {
+    setDeleteTarget({ type: 'single', id: res.id, name: res.name });
+    setMasterPasswordInput('');
+    setPasswordError(false);
+    setShowPassword(false);
+  };
+
+  // Iniciar exclusão em massa com Senha Mestra
+  const promptBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    setDeleteTarget({
+      type: 'bulk',
+      count: selectedIds.size,
+      ids: Array.from(selectedIds)
+    });
+    setMasterPasswordInput('');
+    setPasswordError(false);
+    setShowPassword(false);
+  };
+
+  // Validação da Senha Mestra
+  const checkMasterPassword = async (pwd: string) => {
     try {
-      setResidents(prev => prev.filter(r => r.id !== id));
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      await deleteResident(id);
-      toast.success('Morador excluído!');
-    } catch (error) {
-      toast.error('Erro ao excluir morador.');
+      const encoder = new TextEncoder();
+      const data = encoder.encode(pwd);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hashHex === MASTER_PWD_HASH || pwd === '#Senhasecreta2e';
+    } catch {
+      return pwd === '#Senhasecreta2e';
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    const idsToDelete = new Set(selectedIds);
-    try {
-      setResidents(prev => prev.filter(r => !idsToDelete.has(r.id)));
-      setSelectedIds(new Set());
-      await Promise.all(Array.from(idsToDelete).map(id => deleteResident(id)));
-      toast.success(`${idsToDelete.size} morador(es) excluído(s)!`);
-    } catch (error) {
-      toast.error('Erro ao excluir moradores.');
+  // Confirmar exclusão com Senha Mestra
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (!masterPasswordInput.trim()) {
+      toast.error('Digite a senha mestra para confirmar.');
+      return;
     }
+
+    const isValid = await checkMasterPassword(masterPasswordInput.trim());
+    if (!isValid) {
+      setPasswordError(true);
+      toast.error('Senha mestra incorreta! Apenas o dono do site pode excluir moradores.');
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      if (deleteTarget.type === 'single') {
+        const id = deleteTarget.id;
+        setResidents(prev => prev.filter(r => r.id !== id));
+        setSelectedIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        await deleteResident(id);
+        toast.success(`Morador "${deleteTarget.name}" excluído com sucesso!`);
+      } else if (deleteTarget.type === 'bulk') {
+        const idsToDelete = new Set(deleteTarget.ids);
+        setResidents(prev => prev.filter(r => !idsToDelete.has(r.id)));
+        setSelectedIds(new Set());
+        await Promise.all(deleteTarget.ids.map(id => deleteResident(id)));
+        toast.success(`${deleteTarget.count} morador(es) excluído(s) com sucesso!`);
+      }
+
+      setDeleteTarget(null);
+      setMasterPasswordInput('');
+      setPasswordError(false);
+      setShowPassword(false);
+    } catch (error) {
+      toast.error('Erro ao excluir morador(es).');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCloseDeleteModal = () => {
+    setDeleteTarget(null);
+    setMasterPasswordInput('');
+    setPasswordError(false);
+    setShowPassword(false);
   };
 
   const toggleSelection = (id: string) => {
@@ -307,7 +381,7 @@ export default function ManageResidents() {
 
             {selectedIds.size > 0 && (
               <button 
-                onClick={handleBulkDelete}
+                onClick={promptBulkDelete}
                 className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100 transition"
               >
                 <Trash2 size={16} />
@@ -420,7 +494,7 @@ export default function ManageResidents() {
                       <button onClick={() => startEdit(res)} className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" title="Editar morador">
                         <Edit2 size={17} />
                       </button>
-                      <button onClick={() => handleDeleteSingle(res.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Excluir morador">
+                      <button onClick={() => promptDeleteSingle(res)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Excluir morador">
                         <Trash2 size={17} />
                       </button>
                     </>
@@ -440,6 +514,108 @@ export default function ManageResidents() {
           )}
         </div>
       </div>
+
+      {/* Modal de Confirmação com Senha Mestra para Exclusão de Morador(es) */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-5">
+            
+            {/* Ícone de Alta Segurança */}
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-inner bg-red-100 text-red-600">
+              <ShieldAlert size={36} />
+            </div>
+
+            {/* Cabeçalho do Modal */}
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-bold text-gray-900">
+                {deleteTarget.type === 'single' ? 'Excluir Morador?' : `Excluir ${deleteTarget.count} Moradores?`}
+              </h3>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                {deleteTarget.type === 'single' ? (
+                  <>
+                    Você está prestes a excluir o cadastro de <strong>{deleteTarget.name}</strong>. Esta ação <strong className="text-red-600">não poderá ser desfeita</strong>.
+                  </>
+                ) : (
+                  <>
+                    Você está prestes a excluir <strong>{deleteTarget.count} moradores selecionados</strong>. Esta ação <strong className="text-red-600">não poderá ser desfeita</strong>.
+                  </>
+                )}
+              </p>
+              
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 font-medium text-left flex items-start gap-2.5 mt-2">
+                <KeyRound size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Acesso Restrito ao Dono do Site:</strong> Para autorizar a exclusão, digite a sua <strong>Senha Mestra</strong>.
+                </span>
+              </div>
+            </div>
+
+            {/* Campo da Senha Mestra */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-gray-700">
+                Senha Mestra do Dono do Site:
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Digite a senha mestra..."
+                  value={masterPasswordInput}
+                  onChange={(e) => {
+                    setMasterPasswordInput(e.target.value);
+                    setPasswordError(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && masterPasswordInput.trim()) {
+                      handleConfirmDelete();
+                    }
+                  }}
+                  className={`w-full px-4 py-3.5 pr-12 rounded-xl border-2 transition outline-none text-sm font-medium ${
+                    passwordError
+                      ? 'border-red-400 bg-red-50 text-red-800'
+                      : 'border-gray-300 focus:border-red-500 focus:ring-2 focus:ring-red-200'
+                  }`}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition"
+                  title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              {passwordError && (
+                <p className="text-red-600 text-xs font-bold text-center mt-1">
+                  ❌ Senha mestra incorreta! Apenas o dono do site pode excluir moradores.
+                </p>
+              )}
+            </div>
+
+            {/* Botões de Ação */}
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting || !masterPasswordInput.trim()}
+                onClick={handleConfirmDelete}
+                className="w-full py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
+              >
+                <Trash2 size={18} />
+                {isDeleting ? 'Excluindo...' : 'Confirmar e Excluir Morador'}
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleCloseDeleteModal}
+                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm rounded-xl transition"
+              >
+                Cancelar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
