@@ -116,23 +116,22 @@ export default function Dashboard() {
           icon={<Users size={24} className="text-purple-600" />} 
           bg="bg-purple-50" 
         />
-        <Link to="/admin/residents" className="block transition transform hover:-translate-y-0.5">
-          <StatCard 
-            title="Moradores Cadastrados" 
-            value={stats.totalResidents} 
-            icon={<UserCheck size={24} className="text-teal-600" />} 
-            bg="bg-teal-50" 
-          />
-        </Link>
+        <StatCard 
+          title="Moradores Cadastrados" 
+          value={stats.totalResidents} 
+          icon={<UserCheck size={24} className="text-teal-600" />} 
+          bg="bg-teal-50"
+          href="/admin/residents"
+        />
       </div>
     </div>
   );
 }
 
-function StatCard({ title, value, icon, bg }: { title: string, value: number, icon: React.ReactNode, bg: string }) {
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
-      <div className={`w-14 h-14 ${bg} rounded-2xl flex items-center justify-center`}>
+function StatCard({ title, value, icon, bg, href }: { title: string, value: number, icon: React.ReactNode, bg: string, href?: string }) {
+  const content = (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 h-full">
+      <div className={`w-14 h-14 ${bg} rounded-2xl flex items-center justify-center shrink-0`}>
         {icon}
       </div>
       <div>
@@ -141,4 +140,14 @@ function StatCard({ title, value, icon, bg }: { title: string, value: number, ic
       </div>
     </div>
   );
+
+  if (href) {
+    return (
+      <Link to={href} className="block transition transform hover:-translate-y-0.5">
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
 }
