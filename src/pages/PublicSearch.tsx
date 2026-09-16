@@ -101,6 +101,7 @@ export default function PublicSearch() {
   const [formComplement, setFormComplement] = useState('');
   const [formPhotoUrl, setFormPhotoUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,11 +113,13 @@ export default function PublicSearch() {
     return () => unsubscribe();
   }, []);
 
-  // Atalho do Teclado: Apertar ESC fecha o modal de cadastro ou volta para a tela de pesquisa
+  // Atalho do Teclado: Apertar ESC fecha o modal de foto, cadastro ou volta para a tela de pesquisa
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isModalOpen) {
+        if (previewImage) {
+          setPreviewImage(null);
+        } else if (isModalOpen) {
           setIsModalOpen(false);
         } else if (selectedResident) {
           setSelectedResident(null);
@@ -127,7 +130,7 @@ export default function PublicSearch() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isModalOpen, selectedResident]);
+  }, [previewImage, isModalOpen, selectedResident]);
 
   const loadData = async () => {
     const [resData, pkgData] = await Promise.all([
@@ -638,105 +641,139 @@ export default function PublicSearch() {
               </h3>
 
               {packages.length === 0 ? (
-                <div className="p-8 text-center bg-gray-50 rounded-2xl border border-gray-100">
+                <div className="p-8 text-center bg-gray-50 rounded-2xl border border-gray-100 shadow-sm">
                   <PackageIcon size={36} className="text-gray-300 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-gray-700">Nenhuma encomenda registrada no momento.</p>
                   <p className="text-xs text-gray-400 mt-1">Assim que a portaria receber seu pacote, ele aparecerá aqui.</p>
                 </div>
               ) : (
-                packages.map((pkg, index) => (
-                  <div key={pkg.id} className="border-2 border-gray-100 rounded-2xl overflow-hidden relative shadow-sm bg-white">
-                    <div className={`px-4 py-2.5 border-b flex justify-between items-center ${
-                      pkg.status === 'pending' ? 'bg-emerald-50 border-gray-100' : 'bg-gray-100/80 border-gray-200'
-                    }`}>
-                      <span className="font-bold text-gray-800 text-xs">PACOTE #{packages.length - index}</span>
-                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                        pkg.status === 'pending' 
-                          ? 'bg-orange-100 text-orange-800 border border-orange-200' 
-                          : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {packages.map((pkg, index) => (
+                    <div 
+                      key={pkg.id} 
+                      className="border border-gray-200/80 rounded-2xl overflow-hidden relative shadow-sm hover:shadow-md transition-all bg-white flex flex-col justify-between"
+                    >
+                      {/* Topo do Card */}
+                      <div className={`px-3.5 py-2 border-b flex justify-between items-center ${
+                        pkg.status === 'pending' ? 'bg-emerald-50/70 border-emerald-100' : 'bg-gray-100/90 border-gray-200'
                       }`}>
-                        {pkg.status === 'pending' ? 'Aguardando Retirada' : '✓ Encomenda Retirada'}
-                      </span>
-                    </div>
-                    
-                    {pkg.photoDataUrl && (
-                      <div className="aspect-video w-full bg-black relative group overflow-hidden">
-                        <img 
-                          src={pkg.photoDataUrl} 
-                          alt="Foto da encomenda" 
-                          className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105" 
-                          onClick={() => window.open(pkg.photoDataUrl, '_blank')}
-                        />
-                        {pkg.status === 'delivered' && (
-                          <div className="absolute top-2.5 right-2.5">
-                            <span className="bg-emerald-600/90 backdrop-blur-xs text-white font-bold text-[11px] px-3 py-1 rounded-full shadow-md border border-white/40 flex items-center gap-1">
-                              ✓ RETIRADA
-                            </span>
-                          </div>
-                        )}
+                        <span className="font-extrabold text-gray-800 text-xs tracking-wide">
+                          PACOTE #{packages.length - index}
+                        </span>
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs ${
+                          pkg.status === 'pending' 
+                            ? 'bg-orange-100 text-orange-800 border border-orange-200' 
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        }`}>
+                          {pkg.status === 'pending' ? 'Aguardando Retirada' : '✓ Encomenda Retirada'}
+                        </span>
                       </div>
-                    )}
-                    <div className="p-4 space-y-2 text-xs text-gray-600 relative overflow-hidden">
-                      {pkg.status === 'delivered' && (
-                        <div className="absolute right-2 sm:right-4 top-2 sm:top-3 pointer-events-none select-none z-10 flex flex-col items-center">
-                          <div className="relative flex flex-col items-center -rotate-12">
-                            <img 
-                              src="/carimbo_retirada.png" 
-                              alt="Carimbo Retirada na Associação" 
-                              className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-md opacity-95"
-                            />
-                            {pkg.deliveredAt && (
-                              <div className="-mt-2 bg-red-700 text-white font-black text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full shadow-md border-2 border-white text-center whitespace-nowrap tracking-wide">
-                                {(() => {
-                                  try {
-                                    const d = new Date(Number(pkg.deliveredAt));
-                                    return !isNaN(d.getTime()) ? format(d, 'dd/MM/yyyy HH:mm') : '';
-                                  } catch {
-                                    return '';
-                                  }
-                                })()}
-                              </div>
-                            )}
+                      
+                      {/* Foto Compacta com Clique para Ampliar */}
+                      {pkg.photoDataUrl && (
+                        <div 
+                          className="h-44 sm:h-48 w-full bg-slate-950 relative group overflow-hidden flex items-center justify-center cursor-pointer border-b border-gray-100 select-none"
+                          onClick={() => setPreviewImage(pkg.photoDataUrl || null)}
+                          title="Clique para ampliar a foto"
+                        >
+                          <img 
+                            src={pkg.photoDataUrl} 
+                            alt="Foto da encomenda" 
+                            className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" 
+                          />
+                          
+                          {/* Hover para Zoom */}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1.5 backdrop-blur-[1px]">
+                            <Search size={15} /> Clique para ampliar
                           </div>
+
+                          {pkg.status === 'delivered' && (
+                            <div className="absolute top-2 right-2 z-10 pointer-events-none">
+                              <span className="bg-emerald-600/95 backdrop-blur-xs text-white font-bold text-[10px] px-2.5 py-0.5 rounded-full shadow border border-white/40 flex items-center gap-1">
+                                ✓ RETIRADA
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      <div className="flex items-center gap-2">
-                        <Calendar size={15} className="text-gray-400" />
-                        <span>Chegada: <strong className="text-gray-800">{format(pkg.registeredAt, 'dd/MM/yyyy')}</strong></span>
+                      {/* Informações da Encomenda */}
+                      <div className="p-3.5 sm:p-4 space-y-2 text-xs text-gray-600 relative flex-1 flex flex-col justify-between">
+                        
+                        {/* Carimbo de Retirada Compacto */}
+                        {pkg.status === 'delivered' && (
+                          <div className="absolute right-2 sm:right-3 top-2 pointer-events-none select-none z-10 flex flex-col items-center">
+                            <div className="relative flex flex-col items-center -rotate-12">
+                              <img 
+                                src="/carimbo_retirada.png" 
+                                alt="Carimbo Retirada" 
+                                className="w-16 h-16 sm:w-18 sm:h-18 object-contain drop-shadow-md opacity-95"
+                              />
+                              {pkg.deliveredAt && (
+                                <div className="-mt-1.5 bg-red-700 text-white font-black text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-full shadow-md border border-white text-center whitespace-nowrap">
+                                  {(() => {
+                                    try {
+                                      const d = new Date(Number(pkg.deliveredAt));
+                                      return !isNaN(d.getTime()) ? format(d, 'dd/MM/yyyy HH:mm') : '';
+                                    } catch {
+                                      return '';
+                                    }
+                                  })()}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                          {/* Data e Horário em Linha Única */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex items-center gap-1.5 text-gray-700">
+                              <Calendar size={13} className="text-emerald-600 shrink-0" />
+                              <span>Chegada: <strong className="text-gray-900">{format(pkg.registeredAt, 'dd/MM/yyyy')}</strong></span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-gray-700">
+                              <Clock size={13} className="text-emerald-600 shrink-0" />
+                              <span>Horário: <strong className="text-gray-900">{format(pkg.registeredAt, 'HH:mm')}</strong></span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 text-gray-700">
+                            <UserRound size={13} className="text-gray-400 shrink-0" />
+                            <span>Recebido por: <strong className="text-gray-900">{pkg.registeredBy}</strong></span>
+                          </div>
+
+                          {pkg.carrier && (
+                            <div className="text-[11px] bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-100 flex items-center gap-1.5">
+                              <Truck size={13} className="text-gray-500 shrink-0" />
+                              <span><strong className="text-gray-700">Transportadora:</strong> {pkg.carrier}</span>
+                            </div>
+                          )}
+
+                          {pkg.storageLocation && (
+                            <div className="text-[11px] bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-900 font-medium flex items-center gap-1.5">
+                              <MapPin size={13} className="text-emerald-700 shrink-0" />
+                              <span><strong>Local na Portaria:</strong> {pkg.storageLocation}</span>
+                            </div>
+                          )}
+
+                          {pkg.observations && (
+                            <div className="text-[11px] bg-amber-50/80 px-2.5 py-1.5 rounded-lg border border-amber-200/70 text-amber-950">
+                              <strong>Observações:</strong> {pkg.observations}
+                            </div>
+                          )}
+                        </div>
+
+                        {pkg.status === 'delivered' && pkg.deliveredAt && (
+                          <div className="text-[11px] bg-emerald-50 px-2.5 py-1.5 rounded-lg text-emerald-800 border border-emerald-200 mt-2 font-medium">
+                            Retirada em {format(pkg.deliveredAt, 'dd/MM/yyyy HH:mm')} por {pkg.deliveredBy}
+                          </div>
+                        )}
+
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Clock size={15} className="text-gray-400" />
-                        <span>Horário: <strong className="text-gray-800">{format(pkg.registeredAt, 'HH:mm')}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <UserRound size={15} className="text-gray-400" />
-                        <span>Recebido por: <strong className="text-gray-800">{pkg.registeredBy}</strong></span>
-                      </div>
-                      {pkg.carrier && (
-                         <div className="text-xs bg-gray-50 p-2 rounded-lg border border-gray-100">
-                           <strong className="text-gray-700">Transportadora:</strong> {pkg.carrier}
-                         </div>
-                      )}
-                      {pkg.storageLocation && (
-                         <div className="text-xs bg-emerald-50 p-2 rounded-lg border border-emerald-200 text-emerald-900 font-medium flex items-center gap-1.5">
-                           <span>📍</span>
-                           <span><strong>Local na Portaria:</strong> {pkg.storageLocation}</span>
-                         </div>
-                      )}
-                      {pkg.observations && (
-                         <div className="text-xs bg-amber-50/70 p-2 rounded-lg border border-amber-100 text-amber-900">
-                           <strong>Observações:</strong> {pkg.observations}
-                         </div>
-                      )}
-                      {pkg.status === 'delivered' && pkg.deliveredAt && (
-                         <div className="text-xs bg-emerald-50 p-2 rounded-lg text-emerald-800 border border-emerald-200 mt-2 font-medium">
-                           Retirada em {format(pkg.deliveredAt, 'dd/MM/yyyy HH:mm')} por {pkg.deliveredBy}
-                         </div>
-                      )}
                     </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -989,6 +1026,45 @@ export default function PublicSearch() {
 
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          MODAL DE ZOOM / VISUALIZAÇÃO DE FOTO DA ENCOMENDA
+          ══════════════════════════════════════════════════════════════════ */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            className="relative max-w-4xl w-full flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Botão Fechar no Topo */}
+            <div className="w-full flex justify-end pb-3">
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 transition cursor-pointer"
+              >
+                <X size={18} /> Fechar foto (ESC)
+              </button>
+            </div>
+
+            {/* Imagem Ampliada */}
+            <div className="bg-slate-950 p-2 rounded-2xl shadow-2xl border border-white/10 max-h-[82vh] flex items-center justify-center overflow-hidden">
+              <img 
+                src={previewImage} 
+                alt="Foto da encomenda em alta resolução" 
+                className="max-w-full max-h-[78vh] object-contain rounded-xl"
+              />
+            </div>
+            
+            <p className="text-white/60 text-xs mt-3 text-center">
+              Pressione ESC ou clique fora da imagem para fechar.
+            </p>
           </div>
         </div>
       )}
