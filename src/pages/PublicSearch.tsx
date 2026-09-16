@@ -647,129 +647,133 @@ export default function PublicSearch() {
                   <p className="text-xs text-gray-400 mt-1">Assim que a portaria receber seu pacote, ele aparecerá aqui.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
                   {packages.map((pkg, index) => (
-                    <div 
-                      key={pkg.id} 
-                      className="border border-gray-200/80 rounded-2xl overflow-hidden relative shadow-sm hover:shadow-md transition-all bg-white flex flex-col justify-between"
+                    <div
+                      key={pkg.id}
+                      className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all"
                     >
-                      {/* Topo do Card */}
-                      <div className={`px-3.5 py-2 border-b flex justify-between items-center ${
-                        pkg.status === 'pending' ? 'bg-emerald-50/70 border-emerald-100' : 'bg-gray-100/90 border-gray-200'
+                      {/* Cabeçalho do Item */}
+                      <div className={`px-4 py-2 flex justify-between items-center border-b ${
+                        pkg.status === 'pending'
+                          ? 'bg-emerald-50/80 border-emerald-100'
+                          : 'bg-gray-100 border-gray-200'
                       }`}>
-                        <span className="font-extrabold text-gray-800 text-xs tracking-wide">
+                        <span className="font-extrabold text-gray-800 text-xs tracking-wide flex items-center gap-1.5">
+                          <PackageIcon size={13} className={pkg.status === 'pending' ? 'text-orange-500' : 'text-emerald-600'} />
                           PACOTE #{packages.length - index}
                         </span>
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-2xs ${
-                          pkg.status === 'pending' 
-                            ? 'bg-orange-100 text-orange-800 border border-orange-200' 
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                          pkg.status === 'pending'
+                            ? 'bg-orange-100 text-orange-800 border border-orange-200'
                             : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                         }`}>
-                          {pkg.status === 'pending' ? 'Aguardando Retirada' : '✓ Encomenda Retirada'}
+                          {pkg.status === 'pending' ? '⏳ Aguardando Retirada' : '✓ Encomenda Retirada'}
                         </span>
                       </div>
-                      
-                      {/* Foto Compacta com Clique para Ampliar */}
-                      {pkg.photoDataUrl && (
-                        <div 
-                          className="h-44 sm:h-48 w-full bg-slate-950 relative group overflow-hidden flex items-center justify-center cursor-pointer border-b border-gray-100 select-none"
-                          onClick={() => setPreviewImage(pkg.photoDataUrl || null)}
-                          title="Clique para ampliar a foto"
-                        >
-                          <img 
-                            src={pkg.photoDataUrl} 
-                            alt="Foto da encomenda" 
-                            className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" 
-                          />
-                          
-                          {/* Hover para Zoom */}
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1.5 backdrop-blur-[1px]">
-                            <Search size={15} /> Clique para ampliar
-                          </div>
 
+                      {/* Corpo: Foto à esquerda + Detalhes à direita */}
+                      <div className="flex flex-row">
+
+                        {/* Miniatura da Foto */}
+                        {pkg.photoDataUrl ? (
+                          <div
+                            className="w-28 sm:w-36 shrink-0 bg-slate-900 flex items-center justify-center cursor-pointer relative group select-none border-r border-gray-100 overflow-hidden"
+                            onClick={() => setPreviewImage(pkg.photoDataUrl || null)}
+                            title="Clique para ampliar"
+                          >
+                            <img
+                              src={pkg.photoDataUrl}
+                              alt="Encomenda"
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              style={{ minHeight: '100px', maxHeight: '130px' }}
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                              <Search size={16} className="text-white" />
+                              <span className="text-white text-[9px] font-bold">Ampliar</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-28 sm:w-36 shrink-0 bg-gray-50 flex items-center justify-center border-r border-gray-100" style={{ minHeight: '100px' }}>
+                            <PackageIcon size={28} className="text-gray-200" />
+                          </div>
+                        )}
+
+                        {/* Detalhes */}
+                        <div className="flex-1 px-3 py-2.5 text-xs text-gray-600 space-y-1.5 relative overflow-hidden">
+
+                          {/* Carimbo de Retirada */}
                           {pkg.status === 'delivered' && (
-                            <div className="absolute top-2 right-2 z-10 pointer-events-none">
-                              <span className="bg-emerald-600/95 backdrop-blur-xs text-white font-bold text-[10px] px-2.5 py-0.5 rounded-full shadow border border-white/40 flex items-center gap-1">
-                                ✓ RETIRADA
-                              </span>
+                            <div className="absolute right-1 top-1 pointer-events-none select-none z-10 flex flex-col items-center">
+                              <div className="relative flex flex-col items-center -rotate-12">
+                                <img
+                                  src="/carimbo_retirada.png"
+                                  alt="Retirado"
+                                  className="w-14 h-14 object-contain drop-shadow opacity-90"
+                                />
+                                {pkg.deliveredAt && (
+                                  <div className="-mt-1 bg-red-700 text-white font-black text-[7px] px-1 py-0.5 rounded-full border border-white text-center whitespace-nowrap">
+                                    {(() => {
+                                      try {
+                                        const d = new Date(Number(pkg.deliveredAt));
+                                        return !isNaN(d.getTime()) ? format(d, 'dd/MM HH:mm') : '';
+                                      } catch { return ''; }
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
-                        </div>
-                      )}
 
-                      {/* Informações da Encomenda */}
-                      <div className="p-3.5 sm:p-4 space-y-2 text-xs text-gray-600 relative flex-1 flex flex-col justify-between">
-                        
-                        {/* Carimbo de Retirada Compacto */}
-                        {pkg.status === 'delivered' && (
-                          <div className="absolute right-2 sm:right-3 top-2 pointer-events-none select-none z-10 flex flex-col items-center">
-                            <div className="relative flex flex-col items-center -rotate-12">
-                              <img 
-                                src="/carimbo_retirada.png" 
-                                alt="Carimbo Retirada" 
-                                className="w-16 h-16 sm:w-18 sm:h-18 object-contain drop-shadow-md opacity-95"
-                              />
-                              {pkg.deliveredAt && (
-                                <div className="-mt-1.5 bg-red-700 text-white font-black text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-full shadow-md border border-white text-center whitespace-nowrap">
-                                  {(() => {
-                                    try {
-                                      const d = new Date(Number(pkg.deliveredAt));
-                                      return !isNaN(d.getTime()) ? format(d, 'dd/MM/yyyy HH:mm') : '';
-                                    } catch {
-                                      return '';
-                                    }
-                                  })()}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="space-y-1.5">
-                          {/* Data e Horário em Linha Única */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="flex items-center gap-1.5 text-gray-700">
-                              <Calendar size={13} className="text-emerald-600 shrink-0" />
-                              <span>Chegada: <strong className="text-gray-900">{format(pkg.registeredAt, 'dd/MM/yyyy')}</strong></span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-gray-700">
-                              <Clock size={13} className="text-emerald-600 shrink-0" />
-                              <span>Horário: <strong className="text-gray-900">{format(pkg.registeredAt, 'HH:mm')}</strong></span>
-                            </div>
+                          {/* Data + Hora */}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                            <span className="flex items-center gap-1 text-gray-700">
+                              <Calendar size={11} className="text-emerald-600" />
+                              <strong>{format(pkg.registeredAt, 'dd/MM/yyyy')}</strong>
+                            </span>
+                            <span className="flex items-center gap-1 text-gray-700">
+                              <Clock size={11} className="text-emerald-600" />
+                              <strong>{format(pkg.registeredAt, 'HH:mm')}</strong>
+                            </span>
                           </div>
 
-                          <div className="flex items-center gap-1.5 text-gray-700">
-                            <UserRound size={13} className="text-gray-400 shrink-0" />
-                            <span>Recebido por: <strong className="text-gray-900">{pkg.registeredBy}</strong></span>
+                          {/* Recebido por */}
+                          <div className="flex items-center gap-1 text-gray-600">
+                            <UserRound size={11} className="text-gray-400 shrink-0" />
+                            <span>Recebido por: <strong className="text-gray-800">{pkg.registeredBy}</strong></span>
                           </div>
 
+                          {/* Transportadora */}
                           {pkg.carrier && (
-                            <div className="text-[11px] bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-100 flex items-center gap-1.5">
-                              <Truck size={13} className="text-gray-500 shrink-0" />
-                              <span><strong className="text-gray-700">Transportadora:</strong> {pkg.carrier}</span>
+                            <div className="flex items-center gap-1 text-gray-600 bg-gray-50 rounded-lg px-2 py-1 border border-gray-100">
+                              <Truck size={11} className="text-gray-400 shrink-0" />
+                              <span><strong>Transportadora:</strong> {pkg.carrier}</span>
                             </div>
                           )}
 
+                          {/* Local */}
                           {pkg.storageLocation && (
-                            <div className="text-[11px] bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-900 font-medium flex items-center gap-1.5">
-                              <MapPin size={13} className="text-emerald-700 shrink-0" />
-                              <span><strong>Local na Portaria:</strong> {pkg.storageLocation}</span>
+                            <div className="flex items-center gap-1 text-emerald-900 bg-emerald-50 rounded-lg px-2 py-1 border border-emerald-200 font-medium">
+                              <MapPin size={11} className="text-emerald-700 shrink-0" />
+                              <span><strong>Local:</strong> {pkg.storageLocation}</span>
                             </div>
                           )}
 
+                          {/* Observações */}
                           {pkg.observations && (
-                            <div className="text-[11px] bg-amber-50/80 px-2.5 py-1.5 rounded-lg border border-amber-200/70 text-amber-950">
-                              <strong>Observações:</strong> {pkg.observations}
+                            <div className="bg-amber-50/80 rounded-lg px-2 py-1 border border-amber-200/70 text-amber-950">
+                              <strong>Obs:</strong> {pkg.observations}
                             </div>
                           )}
+
+                          {/* Data de retirada */}
+                          {pkg.status === 'delivered' && pkg.deliveredAt && (
+                            <div className="bg-emerald-50 rounded-lg px-2 py-1 border border-emerald-200 text-emerald-800 font-medium">
+                              Retirada em {format(pkg.deliveredAt, 'dd/MM/yyyy HH:mm')} por {pkg.deliveredBy}
+                            </div>
+                          )}
+
                         </div>
-
-                        {pkg.status === 'delivered' && pkg.deliveredAt && (
-                          <div className="text-[11px] bg-emerald-50 px-2.5 py-1.5 rounded-lg text-emerald-800 border border-emerald-200 mt-2 font-medium">
-                            Retirada em {format(pkg.deliveredAt, 'dd/MM/yyyy HH:mm')} por {pkg.deliveredBy}
-                          </div>
-                        )}
-
                       </div>
                     </div>
                   ))}
