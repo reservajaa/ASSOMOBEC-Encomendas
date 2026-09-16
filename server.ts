@@ -3,7 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
-import Tesseract from "tesseract.js";
+
 
 dotenv.config();
 
@@ -238,11 +238,18 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido:
       const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
       const buffer = Buffer.from(base64Data, 'base64');
       
-      const tesseractResult = await Tesseract.recognize(buffer, 'eng', {
-        logger: () => {}
-      });
+      let tesseractResult: any = null;
+      try {
+        const tesseractPkg = await import('tesseract.js');
+        const Tesseract = tesseractPkg.default || tesseractPkg;
+        tesseractResult = await Tesseract.recognize(buffer, 'eng', {
+          logger: () => {}
+        });
+      } catch (errImport) {
+        // Tesseract não disponível, prossegue sem ele
+      }
 
-      rawText = tesseractResult.data.text || '';
+      rawText = tesseractResult?.data?.text || '';
 
       if (!detectedCarrier) {
         detectedCarrier = detectCarrierFromText(rawText);

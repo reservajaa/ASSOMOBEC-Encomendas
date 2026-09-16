@@ -1,7 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getResidents, getPackages, getPackagesByResident, addResident, updateResident, subscribeToDataChanges } from '../db/localDb';
+import { getResidents, getPackages, addResident, updateResident, subscribeToDataChanges } from '../db/localDb';
 import { Resident, Package } from '../types';
-import { Search, Package as PackageIcon, Calendar, Clock, UserRound, ArrowLeft, PlusCircle, Camera, Upload, MapPin, Phone, Edit3, X, Check, ShieldCheck, Bell, AlertCircle } from 'lucide-react';
+import { 
+  Search, 
+  Package as PackageIcon, 
+  Calendar, 
+  Clock, 
+  UserRound, 
+  ArrowLeft, 
+  PlusCircle, 
+  Camera, 
+  MapPin, 
+  Phone, 
+  Edit3, 
+  X, 
+  ShieldCheck, 
+  Bell, 
+  Boxes, 
+  UserCheck, 
+  Truck,
+  Lock
+} from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -66,7 +85,6 @@ function compressImage(file: File, maxSize = 500, quality = 0.8): Promise<string
 export default function PublicSearch() {
   const [searchTerm, setSearchTerm] = useState('');
   const [residents, setResidents] = useState<Resident[]>([]);
-  const [filteredResidents, setFilteredResidents] = useState<Resident[]>([]);
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [allPackages, setAllPackages] = useState<Package[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
@@ -84,7 +102,7 @@ export default function PublicSearch() {
   const [formPhotoUrl, setFormPhotoUrl] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
@@ -93,6 +111,23 @@ export default function PublicSearch() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Atalho do Teclado: Apertar ESC fecha o modal de cadastro ou volta para a tela de pesquisa
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isModalOpen) {
+          setIsModalOpen(false);
+        } else if (selectedResident) {
+          setSelectedResident(null);
+          setSearchTerm('');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen, selectedResident]);
 
   const loadData = async () => {
     const [resData, pkgData] = await Promise.all([
@@ -103,52 +138,86 @@ export default function PublicSearch() {
     setAllPackages(pkgData.filter(p => p.status === 'pending'));
   };
 
-  // Busca somente por CPF
-  useEffect(() => {
-    const digits = searchTerm.replace(/\D/g, '');
-    if (digits.length >= 3) {
-      const matches = residents.filter(r => {
-        const cpfDigits = (r.cpf || '').replace(/\D/g, '');
-        return cpfDigits.includes(digits);
-      });
-      setFilteredResidents(matches);
+  const fetchPackagesForResidentOrCpf = async (residentId: string, cpfDigits: string) => {
+    const allPkgs = await getPackages();
+    return allPkgs.filter(p => {
+      if (p.residentId === residentId) return true;
+      if (cpfDigits && p.recipientCpf && p.recipientCpf.replace(/\D/g, '') === cpfDigits) return true;
+      return false;
+    });
+  };
+
+  const executeCpfSearch = async (digits: string, formatted: string) => {
+    if (digits.length !== 11) return;
+
+    const matched = residents.find(r => (r.cpf || '').replace(/\D/g, '') === digits);
+    const pkgs = await fetchPackagesForResidentOrCpf(matched ? matched.id : '', digits);
+
+    if (matched) {
+      setSelectedResident(matched);
+      setPackages(pkgs);
+      setSearchTerm('');
+      toast.success(`Bem-vindo(a), ${matched.name}!`);
     } else {
-      setFilteredResidents([]);
+      const unregResident: Resident = {
+        id: 'unregistered_' + digits,
+        name: 'Morador Não Cadastrado',
+        cpf: formatted,
+        phone: '',
+        address: '',
+        photoUrl: '',
+        createdAt: Date.now()
+      };
+
+      setSelectedResident(unregResident);
+      setPackages(pkgs);
+      setSearchTerm('');
+
+      // Abre compulsoriamente a tela de cadastro para o novo morador
+      handleOpenEditResident(unregResident);
+      toast.error('⚠️ ATENÇÃO: Seu CPF não está cadastrado! Conclua seu cadastro obrigatório abaixo.', {
+        duration: 6000,
+      });
     }
-  }, [searchTerm, residents]);
+  };
+
+  const handleCpfInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCpf(e.target.value);
+    setSearchTerm(formatted);
+    const digits = formatted.replace(/\D/g, '');
+
+    if (digits.length === 11) {
+      executeCpfSearch(digits, formatted);
+    }
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const digits = searchTerm.replace(/\D/g, '');
+    if (digits.length !== 11) {
+      toast.error('Por favor, digite o CPF completo com todos os 11 dígitos.');
+      return;
+    }
+    executeCpfSearch(digits, searchTerm);
+  };
 
   const handleSelectResident = async (resident: Resident) => {
     setSelectedResident(resident);
     setSearchTerm('');
-    setFilteredResidents([]);
 
-    const pkgs = await getPackagesByResident(resident.id);
+    const digits = (resident.cpf || '').replace(/\D/g, '');
+    const pkgs = await fetchPackagesForResidentOrCpf(resident.id, digits);
     setPackages(pkgs);
   };
 
-  // Abre formulário para novo morador
-  const handleOpenNewResident = () => {
-    setIsEditing(false);
-    setFormName(searchTerm.replace(/[\d.\-\/]/g, '').trim());
-    setFormCpf(formatCpf(searchTerm.replace(/\D/g, '')));
-    setFormPhone('');
-    setFormStreet('');
-    setFormNumber('');
-    setFormBlock('');
-    setFormComplement('');
-    setFormPhotoUrl(null);
-    setIsModalOpen(true);
-  };
-
-  // Abre formulário para editar morador logado/selecionado
   const handleOpenEditResident = (res: Resident) => {
-    setIsEditing(true);
-    setFormName(res.name);
+    const isUnregistered = res.id.startsWith('unregistered_');
+    setIsEditing(!isUnregistered);
+    setFormName(isUnregistered ? '' : res.name);
     setFormCpf(res.cpf || '');
     setFormPhone(res.phone || '');
     setFormPhotoUrl(res.photoUrl || null);
 
-    // Tenta separar endereço caso venha composto
     setFormStreet(res.address || '');
     setFormNumber('');
     setFormBlock('');
@@ -203,7 +272,6 @@ export default function PublicSearch() {
 
     setIsSaving(true);
 
-    // Monta endereço completo legível
     const addressParts = [
       formStreet.trim(),
       formNumber.trim() ? `Nº ${formNumber.trim()}` : '',
@@ -214,7 +282,7 @@ export default function PublicSearch() {
     const fullAddress = addressParts.join(', ');
 
     try {
-      if (isEditing && selectedResident) {
+      if (isEditing && selectedResident && !selectedResident.id.startsWith('unregistered_')) {
         await updateResident(selectedResident.id, {
           name: formName.trim().toUpperCase(),
           cpf: formCpf.trim() || undefined,
@@ -257,204 +325,316 @@ export default function PublicSearch() {
 
   const activePackages = packages.filter(p => p.status === 'pending');
 
-  // Validação em tempo real para habilitar o botão de confirmar/salvar
-  const isCpfValid = formCpf.replace(/\D/g, '').length === 11;
-  const isPhoneValid = formPhone.replace(/\D/g, '').length >= 10;
-  const isStreetValid = formStreet.trim().length > 0;
-  const isNumberValid = formNumber.trim().length > 0;
-  const isNameValid = formName.trim().length > 0;
-
-  const isFormValid = isNameValid && isCpfValid && isPhoneValid && isStreetValid && isNumberValid;
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <header className="bg-emerald-800 pt-8 pb-12 px-4 rounded-b-[40px] shadow-lg relative z-10">
-        <div className="max-w-md mx-auto text-center">
-          <img src="/logo_assomobec.png" alt="ASSOMOBEC Logo" className="h-24 w-auto mx-auto mb-4 bg-white rounded-2xl p-2 shadow-md border-4 border-emerald-600" />
-          <h1 className="text-3xl font-bold text-white mb-1">ASSOMOBEC</h1>
-          <p className="text-emerald-100 font-medium">Controle de Encomendas</p>
-          <p className="text-emerald-200 text-xs mt-0.5">Camarão Dumas Adjacências</p>
-        </div>
-      </header>
+    <div className="min-h-screen w-full bg-[#015946] text-gray-800 flex flex-col justify-center items-center m-0 p-0 overflow-x-hidden selection:bg-emerald-500 selection:text-white">
+      
+      {!selectedResident ? (
+        /* ══════════════════════════════════════════════════════════════════
+           TELA PRINCIPAL — FULLSCREEN EM ALTA RESOLUÇÃO COM BANNER HD
+           ══════════════════════════════════════════════════════════════════ */
+        <main className="w-full flex-1 flex flex-col justify-center items-center m-0 p-0">
+          
+          {/* Container Principal Desktop / Tablet com Proporção Perfeita */}
+          <div className="relative w-full max-w-[1920px] aspect-[2048/902] select-none m-0 p-0 hidden md:block">
+            {/* Banner Oficial em Altíssima Definição (2048x902) */}
+            <img 
+              src="/banner_fundo_completo.png" 
+              alt="ASSOMOBEC - Controle de Encomendas" 
+              className="w-full h-full object-fill pointer-events-none block m-0 p-0"
+              style={{
+                imageRendering: '-webkit-optimize-contrast',
+                transform: 'translateZ(0)',
+                backfaceVisibility: 'hidden'
+              }}
+            />
 
-      {/* Main Content */}
-      <main className="flex-1 w-full max-w-md mx-auto px-4 -mt-8 relative z-20 pb-20">
-        {!selectedResident ? (
-          <div className="bg-white rounded-3xl shadow-xl p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-1 text-center">Consulta de Encomendas</h2>
-            <p className="text-gray-500 text-xs text-center mb-6">Digite seu CPF para ver suas encomendas.</p>
-            
-            {/* Campo de Busca por CPF */}
-            <div className="relative">
-              <label className="block text-xs font-bold uppercase text-gray-600 mb-2">Digite seu CPF</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={14}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(formatCpf(e.target.value))}
-                  className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-emerald-100 focus:border-emerald-500 focus:ring-0 bg-gray-50 text-base transition-colors font-medium text-gray-800 placeholder:text-gray-400 tracking-widest"
-                  placeholder="000.000.000-00"
-                />
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-600" size={22} />
-              </div>
-              
-              {/* Dropdown de sugestões */}
-              {filteredResidents.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-30 max-h-80 overflow-y-auto divide-y divide-gray-100">
-                  {filteredResidents.map(resident => {
-                    const residentPackages = allPackages.filter(p => p.residentId === resident.id);
-                    const carriers = residentPackages.map(p => p.carrier).filter(Boolean);
-                    const uniqueCarriers = Array.from(new Set(carriers));
-
-                    return (
-                      <button
-                        key={resident.id}
-                        onClick={() => handleSelectResident(resident)}
-                        className="w-full text-left px-4 py-3 hover:bg-emerald-50 transition flex items-center gap-3"
-                      >
-                        {resident.photoUrl ? (
-                          <img src={resident.photoUrl} alt={resident.name} className="w-11 h-11 rounded-full object-cover border-2 border-emerald-400 shadow-sm shrink-0" />
-                        ) : (
-                          <div className="w-11 h-11 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">
-                            {resident.name.slice(0, 2)}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-gray-800 text-sm truncate">{resident.name}</div>
-                          {resident.cpf && <div className="text-xs text-gray-400">CPF: {resident.cpf}</div>}
-                          {resident.address && <div className="text-[11px] text-gray-500 truncate flex items-center gap-1 mt-0.5"><MapPin size={11} /> {resident.address}</div>}
-                          {residentPackages.length > 0 ? (
-                            <div className="text-xs text-orange-600 font-bold flex items-center gap-1 mt-1">
-                              <PackageIcon size={13} />
-                              {residentPackages.length} encomenda{residentPackages.length > 1 ? 's' : ''} aguardando
-                            </div>
-                          ) : (
-                            <div className="text-[11px] text-gray-400 mt-0.5">Sem encomendas pendentes</div>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {searchTerm.replace(/\D/g, '').length >= 3 && filteredResidents.length === 0 && (
-                <div className="mt-4 p-4 rounded-2xl bg-orange-50 border border-orange-200 text-center space-y-2">
-                  <p className="text-sm font-semibold text-orange-800">CPF não encontrado no sistema.</p>
-                  <p className="text-xs text-orange-600">Ainda não possui cadastro na portaria?</p>
-                  <button
-                    type="button"
-                    onClick={handleOpenNewResident}
-                    className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <PlusCircle size={18} /> Cadastrar Meus Dados Agora
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Aviso Informativo: Manter dados atualizados */}
-            <div className="mt-6 space-y-3">
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                    <Bell size={16} />
-                  </div>
-                  <div className="text-xs text-amber-900 leading-relaxed">
-                    <strong className="block text-amber-950 font-bold mb-0.5">Importante: Mantenha seus dados atualizados!</strong>
-                    Certifique-se de que seu <strong>WhatsApp/Telefone</strong> e <strong>Endereço no condomínio</strong> estejam sempre corretos para que a portaria consiga identificar e notificar a chegada das suas encomendas sem atrasos.
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5">
-                <p className="text-emerald-900 text-xs leading-relaxed flex items-center gap-2.5">
-                  <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
-                  <span>
-                    <strong>Portaria ASSOMOBEC:</strong> Controle rápido e seguro de encomendas.
-                  </span>
+            {/* ══════ CARTÃO CENTRAL DE CONSULTA DE CPF (Sobreposto Perfeitamente) ══════ */}
+            <div 
+              style={{
+                position: 'absolute',
+                left: '36.8%',
+                top: '32.6%',
+                width: '26.4%',
+                height: '61.5%',
+                zIndex: 20
+              }}
+              className="bg-white rounded-2xl sm:rounded-3xl shadow-xl border border-gray-100/80 p-4 lg:p-5 flex flex-col justify-between"
+            >
+              {/* Cabeçalho do Cartão */}
+              <div className="text-center">
+                <h2 className="text-[clamp(15px,1.4vw,22px)] font-black text-gray-900 leading-tight">
+                  Consulta de Encomendas
+                </h2>
+                <p className="text-[clamp(10px,0.85vw,13px)] font-semibold text-gray-500 mt-0.5">
+                  Digite seu CPF para ver suas encomendas.
                 </p>
               </div>
-            </div>
-            
-            <div className="mt-6 text-center">
-               <a href="/admin/login" className="text-xs text-gray-400 hover:text-emerald-700 font-medium">Acesso Restrito da Portaria</a>
-            </div>
-          </div>
-        ) : (
-          /* Tela de Detalhes do Morador Logado/Consultado */
-          <div className="bg-white rounded-3xl shadow-xl p-6 min-h-[400px]">
-            <button 
-              onClick={() => setSelectedResident(null)}
-              className="flex items-center text-emerald-600 font-medium text-sm mb-4 hover:text-emerald-800 transition"
-            >
-              <ArrowLeft size={18} className="mr-1" /> Voltar à pesquisa
-            </button>
 
-            {/* Cartão de Perfil do Morador */}
-            <div className="bg-gradient-to-b from-emerald-50 to-white border border-emerald-100 rounded-2xl p-4 text-center mb-6 relative shadow-sm">
-              <button
-                onClick={() => handleOpenEditResident(selectedResident)}
-                className="absolute top-3 right-3 p-2 bg-white text-emerald-700 hover:bg-emerald-100 rounded-xl shadow-xs border border-emerald-200 text-xs font-bold flex items-center gap-1 transition"
-                title="Editar meus dados"
-              >
-                <Edit3 size={14} /> Editar
-              </button>
+              {/* Campo de CPF — 100% Nativo com Placeholder Único e Lupa Centralizada */}
+              <form onSubmit={handleSearchSubmit} className="space-y-1">
+                <label className="block text-[clamp(9px,0.7vw,11px)] font-black text-gray-700 uppercase tracking-wider text-left">
+                  DIGITE SEU CPF
+                </label>
 
-              <div className="relative inline-block mb-3">
-                {selectedResident.photoUrl ? (
-                  <img 
-                    src={selectedResident.photoUrl} 
-                    alt={selectedResident.name} 
-                    className="w-20 h-20 rounded-full object-cover mx-auto border-3 border-emerald-500 shadow-md"
+                <div className="relative flex items-center">
+                  {/* Ícone de Busca Perfeitamente Centralizado Verticalmente */}
+                  <div className="absolute left-3.5 flex items-center pointer-events-none text-emerald-600">
+                    <Search size={18} className="stroke-[2.5]" />
+                  </div>
+
+                  {/* Input Nativo Único */}
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={14}
+                    value={searchTerm}
+                    onChange={handleCpfInputChange}
+                    autoFocus
+                    placeholder="000.000.000-00"
+                    className="w-full pl-10 pr-3 py-2.5 lg:py-3 rounded-xl border-2 border-emerald-300 focus:border-emerald-600 focus:bg-white bg-emerald-50/40 text-[clamp(12px,1.1vw,17px)] font-bold text-gray-900 tracking-wider text-left outline-none transition shadow-inner placeholder:text-gray-400 placeholder:font-normal"
                   />
+                </div>
+
+                {/* Indicador de Dígitos Restantes */}
+                {searchTerm.replace(/\D/g, '').length > 0 && searchTerm.replace(/\D/g, '').length < 11 && (
+                  <p className="text-[clamp(9px,0.75vw,11px)] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-0.5 px-2 text-center">
+                    Faltam {11 - searchTerm.replace(/\D/g, '').length} número{11 - searchTerm.replace(/\D/g, '').length > 1 ? 's' : ''}
+                  </p>
+                )}
+              </form>
+
+              {/* Aviso Amarelo (Associação) */}
+              <div className="bg-amber-50 border border-amber-300/80 rounded-xl p-2.5 lg:p-3 text-left shadow-xs flex items-start gap-2">
+                <Bell size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 text-[clamp(9px,0.72vw,11px)] text-amber-950 leading-tight">
+                  <p className="font-extrabold text-amber-900">
+                    Importante: Mantenha seus dados atualizados!
+                  </p>
+                  <p className="leading-snug text-amber-900/90 font-medium">
+                    Certifique-se de que seu <strong>Telefone de Contato</strong> e <strong>Endereço</strong> na associação estejam sempre corretos para que suas encomendas sejam identificadas e notificadas aqui no site sem atrasos.
+                  </p>
+                </div>
+              </div>
+
+              {/* Aviso Verde */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2 text-left shadow-xs flex items-center gap-2">
+                <ShieldCheck size={15} className="text-emerald-700 shrink-0" />
+                <p className="text-[clamp(9px,0.7vw,11px)] font-bold text-emerald-900 leading-tight">
+                  Portaria ASSOMOBEC: Controle rápido e seguro de encomendas.
+                </p>
+              </div>
+
+              {/* Link de Acesso Restrito da Portaria */}
+              <div className="text-center pt-0.5 border-t border-gray-100">
+                <a 
+                  href="/admin/login" 
+                  className="inline-flex items-center gap-1 text-[clamp(9px,0.7vw,11px)] font-semibold text-gray-400 hover:text-emerald-700 transition"
+                >
+                  <Lock size={11} /> Acesso Restrito da Portaria
+                </a>
+              </div>
+            </div>
+
+          </div>
+
+          {/* ══════ VERSÃO MOBILE AUTOMÁTICA (Celular Vertical) ══════ */}
+          <div className="block md:hidden w-full px-4 py-6 space-y-4">
+            
+            {/* Header Mobile com Logo */}
+            <div className="flex flex-col items-center text-center">
+              <div className="bg-white rounded-2xl p-3 shadow-lg border-2 border-emerald-400 mb-2">
+                <img src="/logo_assomobec.png" alt="ASSOMOBEC" className="h-14 w-auto object-contain" />
+              </div>
+              <h1 className="text-2xl font-black text-white">ASSOMOBEC</h1>
+              <p className="text-sm font-bold text-emerald-300">Controle de Encomendas</p>
+              <p className="text-xs text-emerald-100/80">Camarão Dumas Adjacências</p>
+            </div>
+
+            {/* Cartão de Consulta Mobile */}
+            <div className="w-full bg-white rounded-3xl shadow-xl border border-gray-100 p-5 space-y-4">
+              <div className="text-center">
+                <h2 className="text-xl font-black text-gray-900">Consulta de Encomendas</h2>
+                <p className="text-xs font-semibold text-gray-500 mt-0.5">Digite seu CPF para ver suas encomendas.</p>
+              </div>
+
+              <form onSubmit={handleSearchSubmit} className="space-y-2">
+                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider text-left">
+                  DIGITE SEU CPF
+                </label>
+                <div className="relative flex items-center">
+                  <div className="absolute left-3.5 flex items-center pointer-events-none text-emerald-600">
+                    <Search size={20} className="stroke-[2.5]" />
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={14}
+                    value={searchTerm}
+                    onChange={handleCpfInputChange}
+                    placeholder="000.000.000-00"
+                    className="w-full pl-11 pr-3 py-3.5 rounded-2xl border-2 border-emerald-300 focus:border-emerald-600 focus:bg-white bg-emerald-50/40 text-base font-bold text-gray-900 tracking-wider outline-none transition shadow-inner"
+                  />
+                </div>
+
+                {searchTerm.replace(/\D/g, '').length > 0 && searchTerm.replace(/\D/g, '').length < 11 && (
+                  <p className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-1 px-2 text-center">
+                    Faltam {11 - searchTerm.replace(/\D/g, '').length} número{11 - searchTerm.replace(/\D/g, '').length > 1 ? 's' : ''}
+                  </p>
+                )}
+              </form>
+
+              <div className="bg-amber-50 border border-amber-300/80 rounded-2xl p-3.5 text-left flex items-start gap-2.5">
+                <Bell size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs text-amber-950">
+                  <p className="font-extrabold text-amber-900">Importante: Mantenha seus dados atualizados!</p>
+                  <p className="leading-relaxed font-medium">
+                    Certifique-se de que seu Telefone e Endereço na associação estejam sempre corretos para acompanhar suas encomendas aqui no site.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5 text-left flex items-center gap-2">
+                <ShieldCheck size={16} className="text-emerald-700 shrink-0" />
+                <p className="text-xs font-bold text-emerald-900">
+                  Portaria ASSOMOBEC: Controle rápido e seguro de encomendas.
+                </p>
+              </div>
+
+              <div className="text-center pt-1 border-t border-gray-100">
+                <a href="/admin/login" className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-emerald-700">
+                  <Lock size={12} /> Acesso Restrito da Portaria
+                </a>
+              </div>
+            </div>
+
+            {/* Mascote e Frases Mobile */}
+            <div className="w-full bg-emerald-900/60 backdrop-blur-xs border border-emerald-500/30 rounded-2xl p-4 text-center">
+              <p className="text-base font-bold text-white">Morador,</p>
+              <p className="text-sm font-extrabold text-[#fbbf24] mt-0.5">
+                aqui você pode buscar suas encomendas e fazer seus cadastros!
+              </p>
+            </div>
+
+          </div>
+
+        </main>
+      ) : (
+        /* ══════════════════════════════════════════════════════════════════
+           TELA DE DETALHES DO MORADOR CONSULTADO
+           ══════════════════════════════════════════════════════════════════ */
+        <div className="w-full min-h-screen bg-[#015946] flex flex-col">
+          <div className="w-full bg-[#015946] px-6 pt-5 pb-3 flex items-center">
+            <button 
+              onClick={() => {
+                setSelectedResident(null);
+                setSearchTerm('');
+              }}
+              className="flex items-center text-white/90 hover:text-white font-bold text-sm transition cursor-pointer group"
+              title="Voltar à pesquisa (tecla ESC)"
+            >
+              <ArrowLeft size={20} className="mr-1.5 group-hover:-translate-x-0.5 transition-transform" /> Voltar à pesquisa
+              <span className="hidden sm:inline-flex items-center ml-2 text-[10px] font-bold text-white/70 bg-white/10 border border-white/20 px-1.5 py-0.5 rounded-md uppercase tracking-widest">
+                ESC
+              </span>
+            </button>
+          </div>
+
+          <div className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 pb-10 grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6 lg:gap-10 items-start">
+            {/* Cartão de Perfil */}
+            <div>
+              <div className={`border rounded-3xl p-5 text-center relative shadow-lg transition-all ${
+                selectedResident.id.startsWith('unregistered_')
+                  ? 'bg-gradient-to-b from-red-50 via-white to-amber-50/50 border-red-300 ring-2 ring-red-400/30'
+                  : 'bg-gradient-to-b from-emerald-50 to-white border-emerald-100'
+              }`}>
+                {selectedResident.id.startsWith('unregistered_') ? (
+                  <div>
+                    <div className="w-16 h-16 bg-red-100 text-red-700 rounded-full flex items-center justify-center mx-auto mb-3 border-2 border-red-400 shadow-sm animate-pulse">
+                      <UserRound size={32} />
+                    </div>
+                    <span className="inline-block px-3 py-1 bg-red-600 text-white text-xs font-black rounded-full mb-2 tracking-wide shadow-xs uppercase">
+                      ⚠️ Cadastro Obrigatório na Portaria
+                    </span>
+                    <h2 className="text-xl font-black text-gray-900">Morador não cadastrado</h2>
+                    <p className="text-sm font-bold text-gray-700 font-mono mt-0.5">CPF: {selectedResident.cpf}</p>
+                    
+                    <div className="mt-4 p-4 bg-red-50/80 rounded-2xl border-2 border-red-200 text-left shadow-xs space-y-3">
+                      <p className="text-xs text-red-950 leading-relaxed font-bold">
+                        🚨 <strong>Atenção:</strong> Seus dados ainda não constam no sistema da portaria. Para que suas encomendas possam ser identificadas, notificadas aqui no próprio site e entregues no seu endereço com segurança, você precisa concluir seu cadastro agora.
+                      </p>
+                      <button
+                        onClick={() => handleOpenEditResident(selectedResident)}
+                        className="w-full py-3.5 px-4 bg-[#ea580c] hover:bg-[#c2410c] text-white rounded-xl text-xs font-black tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-md hover:shadow-lg active:scale-[0.98]"
+                      >
+                        <PlusCircle size={18} /> CONCLUIR MEU CADASTRO OBRIGATÓRIO AGORA
+                      </button>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="w-20 h-20 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-300">
-                    <UserRound size={36} />
+                  <div>
+                    <button
+                      onClick={() => handleOpenEditResident(selectedResident)}
+                      className="absolute top-3 right-3 p-2 bg-white text-emerald-700 hover:bg-emerald-100 rounded-xl shadow-xs border border-emerald-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                      title="Editar meus dados"
+                    >
+                      <Edit3 size={14} /> Editar
+                    </button>
+
+                    <div className="relative inline-block mb-3">
+                      {selectedResident.photoUrl ? (
+                        <img 
+                          src={selectedResident.photoUrl} 
+                          alt={selectedResident.name} 
+                          className="w-20 h-20 rounded-full object-cover mx-auto border-3 border-emerald-500 shadow-md"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto border-2 border-emerald-300">
+                          <UserRound size={36} />
+                        </div>
+                      )}
+                    </div>
+
+                    <h2 className="text-xl font-bold text-gray-800 leading-tight">{selectedResident.name}</h2>
+                    
+                    <div className="mt-2 space-y-1 text-xs text-gray-600">
+                      {selectedResident.cpf && (
+                        <p><span className="font-semibold text-gray-500">CPF:</span> {selectedResident.cpf}</p>
+                      )}
+                      {selectedResident.phone && (
+                        <p className="flex items-center justify-center gap-1 text-emerald-700 font-medium">
+                          <Phone size={12} /> {selectedResident.phone}
+                        </p>
+                      )}
+                      {selectedResident.address ? (
+                        <p className="flex items-center justify-center gap-1 text-gray-700 bg-white/80 py-1.5 px-3 rounded-lg border border-emerald-100 mt-2">
+                          <MapPin size={13} className="text-emerald-600 shrink-0" />
+                          <span>{selectedResident.address}</span>
+                        </p>
+                      ) : (
+                        <button 
+                          onClick={() => handleOpenEditResident(selectedResident)}
+                          className="text-xs text-emerald-700 underline font-semibold mt-1 cursor-pointer"
+                        >
+                          + Adicionar endereço completo
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
-              </div>
 
-              <h2 className="text-xl font-bold text-gray-800 leading-tight">{selectedResident.name}</h2>
-              
-              <div className="mt-2 space-y-1 text-xs text-gray-600">
-                {selectedResident.cpf && (
-                  <p><span className="font-semibold text-gray-500">CPF:</span> {selectedResident.cpf}</p>
-                )}
-                {selectedResident.phone && (
-                  <p className="flex items-center justify-center gap-1 text-emerald-700 font-medium">
-                    <Phone size={12} /> {selectedResident.phone}
-                  </p>
-                )}
-                {selectedResident.address ? (
-                  <p className="flex items-center justify-center gap-1 text-gray-700 bg-white/80 py-1.5 px-3 rounded-lg border border-emerald-100 mt-2">
-                    <MapPin size={13} className="text-emerald-600 shrink-0" />
-                    <span>{selectedResident.address}</span>
-                  </p>
-                ) : (
-                  <button 
-                    onClick={() => handleOpenEditResident(selectedResident)}
-                    className="text-xs text-emerald-700 underline font-semibold mt-1"
-                  >
-                    + Adicionar endereço completo
-                  </button>
-                )}
-              </div>
-
-              <div className="mt-4 inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-full font-bold text-sm shadow">
-                <PackageIcon size={18} />
-                {activePackages.length} encomenda{activePackages.length !== 1 ? 's' : ''} aguardando retirada
+                <div className="mt-4 inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-full font-bold text-sm shadow">
+                  <PackageIcon size={18} />
+                  {activePackages.length} encomenda{activePackages.length !== 1 ? 's' : ''} aguardando retirada
+                </div>
               </div>
             </div>
 
-            {/* Lista de Encomendas do Morador */}
+            {/* Lista de Encomendas */}
             <div className="space-y-4">
-              <h3 className="font-bold text-gray-800 text-base flex items-center justify-between">
+              <h3 className="font-bold text-white text-base flex items-center justify-between">
                 <span>Suas Encomendas</span>
-                <span className="text-xs font-normal text-gray-500">Total: {packages.length}</span>
+                <span className="text-xs font-normal text-white/60">Total: {packages.length}</span>
               </h3>
 
               {packages.length === 0 ? (
@@ -497,7 +677,6 @@ export default function PublicSearch() {
                       </div>
                     )}
                     <div className="p-4 space-y-2 text-xs text-gray-600 relative overflow-hidden">
-                      {/* Carimbo RETIRADA NA ASSOCIAÇÃO no lado direito com Data e Horário */}
                       {pkg.status === 'delivered' && (
                         <div className="absolute right-2 sm:right-4 top-2 sm:top-3 pointer-events-none select-none z-10 flex flex-col items-center">
                           <div className="relative flex flex-col items-center -rotate-12">
@@ -561,13 +740,14 @@ export default function PublicSearch() {
               )}
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
-      {/* TELA CHEIA DE CADASTRO / EDIÇÃO DE MORADOR (FULL SCREEN SEM NENHUMA BORDA) */}
+      {/* ══════════════════════════════════════════════════════════════════
+          TELA CHEIA DE CADASTRO / EDIÇÃO DE MORADOR
+          ══════════════════════════════════════════════════════════════════ */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-gray-50 overflow-y-auto flex flex-col">
-          {/* Cabeçalho Fixo no Topo em Tela Cheia */}
           <header className="bg-emerald-800 text-white sticky top-0 z-30 shadow-md">
             <div className="max-w-2xl mx-auto px-4 py-3.5 flex items-center justify-between gap-3">
               <button
@@ -598,12 +778,29 @@ export default function PublicSearch() {
             </div>
           </header>
 
-          {/* Corpo do Formulário em Tela Cheia */}
           <div className="flex-1 w-full max-w-2xl mx-auto px-4 py-6 space-y-6">
             <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-sm border border-gray-200">
+              
+              {/* Alerta de Cadastro Obrigatório para Novo Morador */}
+              {(!isEditing || selectedResident?.id.startsWith('unregistered_')) && (
+                <div className="mb-6 bg-red-50 border-2 border-red-400 rounded-2xl p-4.5 text-left shadow-xs flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs font-black text-xl">
+                    ⚠️
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black text-red-950 tracking-wide uppercase">
+                      Cadastro Obrigatório na Portaria
+                    </h3>
+                    <p className="text-xs font-semibold text-red-900 leading-relaxed">
+                      Seu CPF <strong>não possui cadastro na associação</strong>. Para que a portaria consiga identificar suas encomendas, notificá-lo(a) aqui no próprio site e entregá-las com total segurança, é <strong>obrigatório</strong> preencher seu Nome, Telefone e Endereço abaixo.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <form onSubmit={handleSaveResident} className="space-y-5">
                 
-                {/* Foto do Morador */}
+                {/* Foto */}
                 <div className="flex flex-col items-center justify-center p-5 bg-emerald-50/50 rounded-2xl border-2 border-dashed border-emerald-200">
                   {formPhotoUrl ? (
                     <div className="relative mb-2">
@@ -626,43 +823,57 @@ export default function PublicSearch() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2 transition shadow-sm"
+                      onClick={() => document.getElementById('cameraInput')?.click()}
+                      className="py-2 px-3 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition flex items-center gap-1.5 shadow-xs"
                     >
-                      <Upload size={16} /> {formPhotoUrl ? 'Trocar Foto' : 'Tirar ou Escolher Foto'}
+                      <Camera size={14} /> Tirar Foto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('galleryInput')?.click()}
+                      className="py-2 px-3 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-200 transition border border-gray-300 flex items-center gap-1.5"
+                    >
+                      Escolher Foto
                     </button>
                   </div>
+
                   <input
+                    id="cameraInput"
                     type="file"
-                    ref={fileInputRef}
                     accept="image/*"
                     capture="user"
-                    onChange={handlePhotoUpload}
                     className="hidden"
+                    onChange={handlePhotoUpload}
                   />
-                  <p className="text-[11px] text-gray-500 mt-2 text-center">Foto do morador para identificação na portaria (Opcional)</p>
+                  <input
+                    id="galleryInput"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                  />
                 </div>
 
                 {/* Nome Completo */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                    Nome Completo <span className="text-red-500">* Obrigatório</span>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Nome Completo *
                   </label>
                   <input
                     type="text"
                     required
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Ex: Maria dos Santos Silva"
-                    className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-semibold text-gray-800 bg-gray-50/50"
+                    placeholder="Ex: JOÃO DA SILVA"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 font-medium text-gray-800 uppercase outline-none transition"
                   />
                 </div>
 
                 {/* CPF e Telefone */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                      CPF <span className="text-red-500">* Obrigatório</span>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      CPF *
                     </label>
                     <input
                       type="text"
@@ -672,12 +883,13 @@ export default function PublicSearch() {
                       value={formCpf}
                       onChange={(e) => setFormCpf(formatCpf(e.target.value))}
                       placeholder="000.000.000-00"
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50 tracking-wider font-semibold"
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 font-medium text-gray-800 outline-none transition"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                      WhatsApp / Telefone <span className="text-red-500">* Obrigatório</span>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                      WhatsApp / Telefone *
                     </label>
                     <input
                       type="text"
@@ -687,109 +899,100 @@ export default function PublicSearch() {
                       value={formPhone}
                       onChange={(e) => setFormPhone(formatPhone(e.target.value))}
                       placeholder="(00) 00000-0000"
-                      className="w-full px-4 py-3.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-800 bg-gray-50/50 font-medium"
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 font-medium text-gray-800 outline-none transition"
                     />
                   </div>
                 </div>
 
-                {/* Endereço Completo */}
-                <div className="p-4 sm:p-5 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                      <MapPin size={16} className="text-emerald-600" /> Endereço Completo no Condomínio
-                    </span>
-                    <span className="text-[11px] font-bold text-red-500">* Obrigatório</span>
-                  </div>
+                {/* Endereço */}
+                <div className="space-y-3 pt-2 border-t border-gray-100">
+                  <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                    Endereço na Associação
+                  </p>
 
-                  <div className="grid grid-cols-3 gap-2.5">
-                    <div className="col-span-2">
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">
-                        Rua / Alameda / Travessa <span className="text-red-500">*</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                        Rua / Alameda / Travessa *
                       </label>
                       <input
                         type="text"
                         required
                         value={formStreet}
                         onChange={(e) => setFormStreet(e.target.value)}
-                        placeholder="Ex: Alameda das Palmeiras"
-                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                        placeholder="Ex: Alameda das Flores"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:border-emerald-600 text-sm font-medium outline-none transition"
                       />
                     </div>
+
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-500 mb-1">
-                        Número / Casa <span className="text-red-500">*</span>
+                      <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                        Número / Casa *
                       </label>
                       <input
                         type="text"
                         required
                         value={formNumber}
                         onChange={(e) => setFormNumber(e.target.value)}
-                        placeholder="Nº 123"
-                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium"
+                        placeholder="Ex: 120"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:border-emerald-600 text-sm font-medium outline-none transition"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-400 mb-1">
-                        Quadra / Lote / Bloco / Apto <span className="text-gray-400 text-[9px] font-normal">(Opcional)</span>
+                      <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                        Quadra / Lote / Bloco (Opcional)
                       </label>
                       <input
                         type="text"
                         value={formBlock}
                         onChange={(e) => setFormBlock(e.target.value)}
-                        placeholder="Ex: Qd 05, Lt 12"
-                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium text-gray-700"
+                        placeholder="Ex: Qd 12 Lt 05"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:border-emerald-600 text-sm font-medium outline-none transition"
                       />
                     </div>
+
                     <div>
-                      <label className="block text-[10px] font-bold text-gray-400 mb-1">
-                        Complemento / Ponto de ref. <span className="text-gray-400 text-[9px] font-normal">(Opcional)</span>
+                      <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                        Complemento / Apto (Opcional)
                       </label>
                       <input
                         type="text"
                         value={formComplement}
                         onChange={(e) => setFormComplement(e.target.value)}
-                        placeholder="Ex: Próximo à praça"
-                        className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-xs sm:text-sm focus:ring-1 focus:ring-emerald-500 bg-white font-medium text-gray-700"
+                        placeholder="Ex: Bloco B Apto 204"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:border-emerald-600 text-sm font-medium outline-none transition"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Botões de Ação */}
-                <div className="pt-3 space-y-2.5">
-                  <button
-                    type="submit"
-                    disabled={!isFormValid || isSaving}
-                    className={`w-full py-4 font-bold text-base rounded-2xl shadow-lg transition flex items-center justify-center gap-2 ${
-                      isFormValid && !isSaving
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-xl cursor-pointer'
-                        : 'bg-gray-200 text-gray-400 border border-gray-300 shadow-none cursor-not-allowed opacity-80'
-                    }`}
-                  >
-                    <Check size={20} /> 
-                    {isSaving 
-                      ? 'Salvando seus dados...' 
-                      : isFormValid 
-                        ? 'Confirmar e Salvar Cadastro' 
-                        : 'Preencha todos os campos obrigatórios'}
-                  </button>
-
+                {/* Botões */}
+                <div className="pt-4 flex gap-3">
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-sm rounded-xl transition"
+                    className="flex-1 py-3 px-4 rounded-xl border border-gray-300 text-gray-700 font-bold text-sm hover:bg-gray-50 transition"
                   >
                     Cancelar
                   </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-xl font-bold text-sm shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isSaving ? 'Salvando...' : 'Salvar Meus Dados'}
+                  </button>
                 </div>
+
               </form>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

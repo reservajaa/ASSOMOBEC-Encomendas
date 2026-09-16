@@ -63,43 +63,45 @@ function AdminLayout() {
   }, [navigate]);
   
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+    <div className="h-screen w-full bg-gray-50 flex flex-col md:flex-row overflow-hidden">
       {/* Sidebar - Desktop */}
-      <aside className="hidden md:flex flex-col w-64 bg-emerald-800 text-white shadow-xl z-20">
-        <div className="p-6 flex flex-col items-center border-b border-emerald-700">
-           <img src="/logo_assomobec.png" alt="Logo" className="h-16 w-auto mb-2 bg-white rounded-2xl p-1" />
-           <h1 className="text-xl font-bold text-center leading-tight">ASSOMOBEC</h1>
-           <p className="text-emerald-200 text-xs text-center mt-1">Camarão Dumas Adjacências</p>
+      <aside className="hidden md:flex flex-col w-64 h-screen shrink-0 bg-emerald-800 text-white shadow-xl z-20">
+        <div className="p-4 sm:p-5 flex flex-col items-center border-b border-emerald-700 shrink-0">
+           <img src="/logo_assomobec.png" alt="Logo" className="h-14 w-auto mb-2 bg-white rounded-2xl p-1 shadow-sm" />
+           <h1 className="text-lg font-bold text-center leading-tight tracking-wide">ASSOMOBEC</h1>
+           <p className="text-emerald-200 text-[11px] text-center mt-0.5">Camarão Dumas Adjacências</p>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
-          <Link to="/admin/dashboard" className={`flex items-center gap-3 p-3 rounded-lg transition ${isActive('/admin/dashboard') ? 'bg-emerald-700 font-bold' : 'hover:bg-emerald-700'}`}>
-            <LayoutDashboard size={20} /> Dashboard
+        <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto hide-scrollbar">
+          <Link to="/admin/dashboard" className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${isActive('/admin/dashboard') ? 'bg-emerald-700 font-bold shadow-sm' : 'hover:bg-emerald-700/70'}`}>
+            <LayoutDashboard size={19} /> Dashboard
           </Link>
-          <Link to="/admin/register" className={`flex items-center gap-3 p-3 rounded-lg transition ${isActive('/admin/register') ? 'bg-emerald-700 font-bold' : 'hover:bg-emerald-700'}`}>
-            <Package size={20} /> Registrar Encomenda
+          <Link to="/admin/register" className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${isActive('/admin/register') ? 'bg-emerald-700 font-bold shadow-sm' : 'hover:bg-emerald-700/70'}`}>
+            <Package size={19} /> Registrar Encomenda
           </Link>
-          <Link to="/admin/history" className={`flex items-center gap-3 p-3 rounded-lg transition ${isActive('/admin/history') ? 'bg-emerald-700 font-bold' : 'hover:bg-emerald-700'}`}>
-            <History size={20} /> Histórico
+          <Link to="/admin/history" className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${isActive('/admin/history') ? 'bg-emerald-700 font-bold shadow-sm' : 'hover:bg-emerald-700/70'}`}>
+            <History size={19} /> Histórico
           </Link>
-          <Link to="/admin/residents" className={`flex items-center gap-3 p-3 rounded-lg transition ${isActive('/admin/residents') ? 'bg-emerald-700 font-bold' : 'hover:bg-emerald-700'}`}>
-            <UserRound size={20} /> Moradores
+          <Link to="/admin/residents" className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${isActive('/admin/residents') ? 'bg-emerald-700 font-bold shadow-sm' : 'hover:bg-emerald-700/70'}`}>
+            <UserRound size={19} /> Moradores
           </Link>
-          <Link to="/admin/settings" className={`flex items-center gap-3 p-3 rounded-lg transition ${isActive('/admin/settings') ? 'bg-emerald-700 font-bold' : 'hover:bg-emerald-700'}`}>
-            <SettingsIcon size={20} /> Configurações
+          <Link to="/admin/settings" className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${isActive('/admin/settings') ? 'bg-emerald-700 font-bold shadow-sm' : 'hover:bg-emerald-700/70'}`}>
+            <SettingsIcon size={19} /> Configurações
           </Link>
         </nav>
-        <div className="p-4 border-t border-emerald-700">
-          <div className="text-sm text-emerald-200 mb-4 px-2">Logado como: <br/><strong className="text-white">{user?.name}</strong></div>
-          <button onClick={logout} className="flex items-center justify-center gap-2 w-full p-3 bg-orange-600 hover:bg-orange-700 rounded-lg transition font-bold text-white shadow-md">
-            <LogOut size={20} /> Sair
+        <div className="p-4 border-t border-emerald-700 shrink-0">
+          <div className="text-xs text-emerald-200 mb-3 px-1">
+            Logado como: <br/><strong className="text-white text-sm">{user?.name}</strong>
+          </div>
+          <button onClick={logout} className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-700 active:scale-[0.98] rounded-xl transition font-bold text-white shadow-md cursor-pointer text-sm">
+            <LogOut size={18} /> Sair
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen max-w-full overflow-hidden">
+      <main className="flex-1 flex flex-col h-screen max-w-full overflow-hidden">
         {/* Mobile Header */}
-        <header className="md:hidden bg-emerald-800 text-white p-4 flex justify-between items-center shadow-md relative z-20">
+        <header className="md:hidden bg-emerald-800 text-white p-4 flex justify-between items-center shadow-md relative z-20 shrink-0">
            <div className="flex items-center gap-3">
               <img src="/logo_assomobec.png" alt="Logo" className="h-10 w-auto bg-white rounded-lg p-1" />
               <div className="flex flex-col">
@@ -113,7 +115,7 @@ function AdminLayout() {
         </header>
 
         {/* Mobile Navigation */}
-        <nav className="md:hidden bg-white border-b flex overflow-x-auto shadow-sm p-3 gap-2 hide-scrollbar relative z-10">
+        <nav className="md:hidden bg-white border-b flex overflow-x-auto shadow-sm p-3 gap-2 hide-scrollbar relative z-10 shrink-0">
           <Link to="/admin/dashboard" className={`whitespace-nowrap px-4 py-2 text-sm font-bold rounded-full transition-colors ${isActive('/admin/dashboard') ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>Dashboard</Link>
           <Link to="/admin/register" className={`whitespace-nowrap px-4 py-2 text-sm font-bold rounded-full transition-colors ${isActive('/admin/register') ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>Registrar</Link>
           <Link to="/admin/history" className={`whitespace-nowrap px-4 py-2 text-sm font-bold rounded-full transition-colors ${isActive('/admin/history') ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-50 text-gray-600 border border-gray-200'}`}>Histórico</Link>
