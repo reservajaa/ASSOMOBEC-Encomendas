@@ -275,8 +275,13 @@ export default function ManageResidents() {
   return (
     <div className="space-y-6 pb-20 max-w-4xl mx-auto">
       <div>
-        <h1 className="text-3xl font-bold text-gray-800">Gerenciar Moradores</h1>
-        <p className="text-gray-500">Cadastro e listagem de moradores da associação</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-bold text-gray-800">Gerenciar Moradores</h1>
+          <span className="bg-emerald-100 text-emerald-800 text-xs font-black px-3 py-1 rounded-full border border-emerald-200">
+            {residents.length} {residents.length === 1 ? 'morador cadastrado' : 'moradores cadastrados'}
+          </span>
+        </div>
+        <p className="text-gray-500 mt-1">Cadastro e listagem de moradores da associação</p>
       </div>
 
       {/* Formulário de Cadastro do Administrador */}

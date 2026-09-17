@@ -44,12 +44,84 @@ let memoryPackages: Package[] = getLocalPackages();
 type DataChangeListener = () => void;
 const listeners: Set<DataChangeListener> = new Set();
 
+export type NewResidentListener = (resident: Resident) => void;
+const newResidentListeners: Set<NewResidentListener> = new Set();
+
+export function subscribeToNewResident(listener: NewResidentListener): () => void {
+  newResidentListeners.add(listener);
+  return () => {
+    newResidentListeners.delete(listener);
+  };
+}
+
+// Guarda IDs de moradores já conhecidos no início para evitar alertar moradores antigos
+const notifiedResidentIds: Set<string> = new Set(memoryResidents.map(r => r.id));
+
+export function notifyNewResident(resident: Resident) {
+  if (!resident || !resident.id) return;
+  if (notifiedResidentIds.has(resident.id)) return;
+  notifiedResidentIds.add(resident.id);
+
+  newResidentListeners.forEach(fn => {
+    try {
+      fn(resident);
+    } catch (e) {
+      console.error('Error in newResidentListener:', e);
+    }
+  });
+
+  // Notifica outras abas locais via BroadcastChannel
+  try {
+    syncChannel?.postMessage({ type: 'new_resident', resident });
+  } catch (e) {}
+
+  // Também salva no localStorage para compatibilidade entre abas
+  try {
+    localStorage.setItem('assomobec_last_new_resident', JSON.stringify({ resident, time: Date.now() }));
+  } catch (e) {}
+}
+
+export function playNotificationSound() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+
+    // Tom 1
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
+    gain1.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.3);
+
+    // Tom 2
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
+    gain2.gain.setValueAtTime(0.22, ctx.currentTime + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(ctx.currentTime + 0.12);
+    osc2.stop(ctx.currentTime + 0.6);
+  } catch (e) {}
+}
+
 // Sincronização entre abas do mesmo navegador (BroadcastChannel)
 let syncChannel: BroadcastChannel | null = null;
 if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
   try {
     syncChannel = new BroadcastChannel('assomobec_sync_channel');
-    syncChannel.onmessage = () => {
+    syncChannel.onmessage = (event: MessageEvent) => {
+      if (event.data?.type === 'new_resident' && event.data.resident) {
+        notifyNewResident(event.data.resident);
+      }
       memoryResidents = getLocalResidents();
       memoryPackages = getLocalPackages();
       listeners.forEach(fn => {
@@ -62,6 +134,14 @@ if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
 // Sincronização entre abas via evento de Storage
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
+    if (e.key === 'assomobec_last_new_resident' && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (parsed?.resident) {
+          notifyNewResident(parsed.resident);
+        }
+      } catch (err) {}
+    }
     if (e.key === LOCAL_STORAGE_RESIDENTS_KEY || e.key === LOCAL_STORAGE_PACKAGES_KEY) {
       memoryResidents = getLocalResidents();
       memoryPackages = getLocalPackages();
@@ -128,9 +208,15 @@ async function syncResidentsBackground() {
       // OU se a memória local também está vazia
       // (evita apagar cadastros locais não sincronizados ainda)
       if (residents.length > 0 || memoryResidents.length === 0) {
+        // Detecta novo morador recém-cadastrado (últimos 5 minutos) que não estava em memória
+        const knownIds = new Set(memoryResidents.map(r => r.id));
+        const newlyAdded = residents.filter(r => !knownIds.has(r.id) && (Date.now() - r.createdAt < 5 * 60 * 1000));
+
         memoryResidents = residents;
         setLocalResidents(residents);
         notifyDataChanges();
+
+        newlyAdded.forEach(r => notifyNewResident(r));
       }
     }
   } catch (err) {
@@ -199,7 +285,19 @@ if (typeof window !== 'undefined') {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, () => {
         syncPackagesBackground();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'residents' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'residents' }, (payload: any) => {
+        if (payload?.eventType === 'INSERT' && payload.new) {
+          const res: Resident = {
+            id: String(payload.new.id),
+            name: payload.new.name,
+            cpf: payload.new.cpf || undefined,
+            phone: payload.new.phone || undefined,
+            photoUrl: payload.new.photoUrl || payload.new.photo_url || undefined,
+            address: payload.new.address || undefined,
+            createdAt: Number(payload.new.createdAt || payload.new.created_at || Date.now())
+          };
+          notifyNewResident(res);
+        }
         syncResidentsBackground();
       })
       .subscribe();
@@ -273,6 +371,7 @@ export async function addResident(
   memoryResidents.push(newResident);
   setLocalResidents(memoryResidents);
   notifyDataChanges();
+  notifyNewResident(newResident);
 
   // 2. Envia ao Supabase AGUARDANDO confirmação (para garantir persistência)
   const insertPayload = {
