@@ -75,7 +75,13 @@ export default function ManageResidents() {
     
     withCounts.sort((a, b) => a.name.localeCompare(b.name));
     setResidents(withCounts);
-    setSelectedIds(new Set());
+    // Preserva a seleção do usuário (remove apenas IDs que deixaram de existir)
+    setSelectedIds(prev => {
+      if (prev.size === 0) return prev;
+      const validIds = new Set(withCounts.map(r => r.id));
+      const next = new Set([...prev].filter(id => validIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
   };
 
   const handleAddResident = async (e: React.FormEvent) => {
