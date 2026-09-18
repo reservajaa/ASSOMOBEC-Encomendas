@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, addResident, updateResident, deleteResident, getPackages, subscribeToDataChanges } from '../../db/localDb';
 import { Resident } from '../../types';
 import { Search, UserPlus, Package as PackageIcon, Edit2, Trash2, CheckSquare, Square, X, Check, MapPin, Phone, UserRound, CheckCircle2, ShieldAlert, KeyRound, Eye, EyeOff } from 'lucide-react';
@@ -22,6 +22,7 @@ export default function ManageResidents() {
   
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIdsRef = useRef<Set<string>>(new Set());
   
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,15 +45,15 @@ export default function ManageResidents() {
   useEffect(() => {
     loadData();
     const unsubscribe = subscribeToDataChanges(() => {
-      loadData();
+      loadDataKeepSelection();
     });
     return () => unsubscribe();
   }, []);
 
-  const loadData = async () => {
+  // Carrega os dados SEM resetar a seleção (usado pelo listener de sync)
+  const loadDataKeepSelection = async () => {
     const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
     
-    // Contagem real separando pendentes de retiradas/entregues
     const pendingMap = new Map<string, number>();
     const deliveredMap = new Map<string, number>();
 
@@ -75,13 +76,50 @@ export default function ManageResidents() {
     
     withCounts.sort((a, b) => a.name.localeCompare(b.name));
     setResidents(withCounts);
-    // Preserva a seleção do usuário (remove apenas IDs que deixaram de existir)
-    setSelectedIds(prev => {
-      if (prev.size === 0) return prev;
+
+    // Preserva a seleção atual lida do ref (não usa closure)
+    const currentSelection = selectedIdsRef.current;
+    if (currentSelection.size > 0) {
       const validIds = new Set(withCounts.map(r => r.id));
-      const next = new Set([...prev].filter(id => validIds.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
+      const next = new Set([...currentSelection].filter(id => validIds.has(id)));
+      if (next.size !== currentSelection.size) {
+        setSelectedIds(next);
+        selectedIdsRef.current = next;
+      }
+      // Se todos os IDs ainda são válidos, não precisa fazer nada (seleção já está certa)
+    }
+  };
+
+  // Carrega os dados E reseta a seleção (usado só na montagem inicial)
+  const loadData = async () => {
+    const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
+    
+    const pendingMap = new Map<string, number>();
+    const deliveredMap = new Map<string, number>();
+
+    for (const p of allPkgs) {
+      if (p.residentId) {
+        if (p.status === 'pending') {
+          pendingMap.set(p.residentId, (pendingMap.get(p.residentId) || 0) + 1);
+        } else if (p.status === 'delivered') {
+          deliveredMap.set(p.residentId, (deliveredMap.get(p.residentId) || 0) + 1);
+        }
+      }
+    }
+
+    const withCounts = res.map(r => ({
+      ...r,
+      pendingCount: pendingMap.get(r.id) || 0,
+      deliveredCount: deliveredMap.get(r.id) || 0,
+      totalCount: (pendingMap.get(r.id) || 0) + (deliveredMap.get(r.id) || 0)
+    }));
+    
+    withCounts.sort((a, b) => a.name.localeCompare(b.name));
+    setResidents(withCounts);
+    // Na montagem inicial, começa sem nada selecionado
+    const empty = new Set<string>();
+    setSelectedIds(empty);
+    selectedIdsRef.current = empty;
   };
 
   const handleAddResident = async (e: React.FormEvent) => {
@@ -219,17 +257,18 @@ export default function ManageResidents() {
       if (deleteTarget.type === 'single') {
         const id = deleteTarget.id;
         setResidents(prev => prev.filter(r => r.id !== id));
-        setSelectedIds(prev => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+        const newSet = new Set(selectedIdsRef.current);
+        newSet.delete(id);
+        setSelectedIds(newSet);
+        selectedIdsRef.current = newSet;
         await deleteResident(id);
         toast.success(`Morador "${deleteTarget.name}" excluído com sucesso!`);
       } else if (deleteTarget.type === 'bulk') {
         const idsToDelete = new Set(deleteTarget.ids);
         setResidents(prev => prev.filter(r => !idsToDelete.has(r.id)));
-        setSelectedIds(new Set());
+        const empty = new Set<string>();
+        setSelectedIds(empty);
+        selectedIdsRef.current = empty;
         await Promise.all(deleteTarget.ids.map(id => deleteResident(id)));
         toast.success(`${deleteTarget.count} morador(es) excluído(s) com sucesso!`);
       }
@@ -260,13 +299,18 @@ export default function ManageResidents() {
       newSet.add(id);
     }
     setSelectedIds(newSet);
+    selectedIdsRef.current = newSet;
   };
 
   const toggleAll = () => {
-    if (selectedIds.size === filtered.length) {
-      setSelectedIds(new Set());
+    if (selectedIds.size === filtered.length && filtered.length > 0) {
+      const empty = new Set<string>();
+      setSelectedIds(empty);
+      selectedIdsRef.current = empty;
     } else {
-      setSelectedIds(new Set(filtered.map(r => r.id)));
+      const all = new Set(filtered.map(r => r.id));
+      setSelectedIds(all);
+      selectedIdsRef.current = all;
     }
   };
 
