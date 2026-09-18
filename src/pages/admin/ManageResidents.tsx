@@ -42,85 +42,78 @@ export default function ManageResidents() {
   const [passwordError, setPasswordError] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // ─── CALLBACK REF PATTERN ────────────────────────────────────────────────
+  // Este ref é atualizado em CADA render, então a função que executa no sync
+  // SEMPRE usa a versão mais recente — sem stale closure, sem reset acidental.
+  const syncCallbackRef = useRef<() => Promise<void>>();
+
+  // Função de sync: atualiza residentes SEM resetar seleção.
+  // Usa a forma de callback do setSelectedIds, que recebe o estado ATUAL.
+  syncCallbackRef.current = async () => {
+    const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
+
+    const pendingMap = new Map<string, number>();
+    const deliveredMap = new Map<string, number>();
+    for (const p of allPkgs) {
+      if (p.residentId) {
+        if (p.status === 'pending') {
+          pendingMap.set(p.residentId, (pendingMap.get(p.residentId) || 0) + 1);
+        } else if (p.status === 'delivered') {
+          deliveredMap.set(p.residentId, (deliveredMap.get(p.residentId) || 0) + 1);
+        }
+      }
+    }
+    const withCounts = res.map(r => ({
+      ...r,
+      pendingCount: pendingMap.get(r.id) || 0,
+      deliveredCount: deliveredMap.get(r.id) || 0,
+      totalCount: (pendingMap.get(r.id) || 0) + (deliveredMap.get(r.id) || 0)
+    }));
+    withCounts.sort((a, b) => a.name.localeCompare(b.name));
+    setResidents(withCounts);
+
+    // Forma de callback: "prev" é garantidamente o estado ATUAL do React
+    setSelectedIds(prev => {
+      if (prev.size === 0) return prev; // nenhuma seleção — não faz nada
+      const validIds = new Set(withCounts.map(r => r.id));
+      const next = new Set([...prev].filter(id => validIds.has(id)));
+      return next.size === prev.size ? prev : next; // referência estável se não mudou
+    });
+  };
+
   useEffect(() => {
-    loadData();
+    // Carregamento inicial: reseta seleção
+    (async () => {
+      const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
+      const pendingMap = new Map<string, number>();
+      const deliveredMap = new Map<string, number>();
+      for (const p of allPkgs) {
+        if (p.residentId) {
+          if (p.status === 'pending') {
+            pendingMap.set(p.residentId, (pendingMap.get(p.residentId) || 0) + 1);
+          } else if (p.status === 'delivered') {
+            deliveredMap.set(p.residentId, (deliveredMap.get(p.residentId) || 0) + 1);
+          }
+        }
+      }
+      const withCounts = res.map(r => ({
+        ...r,
+        pendingCount: pendingMap.get(r.id) || 0,
+        deliveredCount: deliveredMap.get(r.id) || 0,
+        totalCount: (pendingMap.get(r.id) || 0) + (deliveredMap.get(r.id) || 0)
+      }));
+      withCounts.sort((a, b) => a.name.localeCompare(b.name));
+      setResidents(withCounts);
+      setSelectedIds(new Set());
+    })();
+
+    // O listener SEMPRE chama a versão mais recente via ref
     const unsubscribe = subscribeToDataChanges(() => {
-      loadDataKeepSelection();
+      syncCallbackRef.current?.();
     });
     return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Carrega os dados SEM resetar a seleção (usado pelo listener de sync)
-  const loadDataKeepSelection = async () => {
-    const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
-    
-    const pendingMap = new Map<string, number>();
-    const deliveredMap = new Map<string, number>();
-
-    for (const p of allPkgs) {
-      if (p.residentId) {
-        if (p.status === 'pending') {
-          pendingMap.set(p.residentId, (pendingMap.get(p.residentId) || 0) + 1);
-        } else if (p.status === 'delivered') {
-          deliveredMap.set(p.residentId, (deliveredMap.get(p.residentId) || 0) + 1);
-        }
-      }
-    }
-
-    const withCounts = res.map(r => ({
-      ...r,
-      pendingCount: pendingMap.get(r.id) || 0,
-      deliveredCount: deliveredMap.get(r.id) || 0,
-      totalCount: (pendingMap.get(r.id) || 0) + (deliveredMap.get(r.id) || 0)
-    }));
-    
-    withCounts.sort((a, b) => a.name.localeCompare(b.name));
-    setResidents(withCounts);
-
-    // Preserva a seleção atual lida do ref (não usa closure)
-    const currentSelection = selectedIdsRef.current;
-    if (currentSelection.size > 0) {
-      const validIds = new Set(withCounts.map(r => r.id));
-      const next = new Set([...currentSelection].filter(id => validIds.has(id)));
-      if (next.size !== currentSelection.size) {
-        setSelectedIds(next);
-        selectedIdsRef.current = next;
-      }
-      // Se todos os IDs ainda são válidos, não precisa fazer nada (seleção já está certa)
-    }
-  };
-
-  // Carrega os dados E reseta a seleção (usado só na montagem inicial)
-  const loadData = async () => {
-    const [res, allPkgs] = await Promise.all([getResidents(), getPackages()]);
-    
-    const pendingMap = new Map<string, number>();
-    const deliveredMap = new Map<string, number>();
-
-    for (const p of allPkgs) {
-      if (p.residentId) {
-        if (p.status === 'pending') {
-          pendingMap.set(p.residentId, (pendingMap.get(p.residentId) || 0) + 1);
-        } else if (p.status === 'delivered') {
-          deliveredMap.set(p.residentId, (deliveredMap.get(p.residentId) || 0) + 1);
-        }
-      }
-    }
-
-    const withCounts = res.map(r => ({
-      ...r,
-      pendingCount: pendingMap.get(r.id) || 0,
-      deliveredCount: deliveredMap.get(r.id) || 0,
-      totalCount: (pendingMap.get(r.id) || 0) + (deliveredMap.get(r.id) || 0)
-    }));
-    
-    withCounts.sort((a, b) => a.name.localeCompare(b.name));
-    setResidents(withCounts);
-    // Na montagem inicial, começa sem nada selecionado
-    const empty = new Set<string>();
-    setSelectedIds(empty);
-    selectedIdsRef.current = empty;
-  };
 
   const handleAddResident = async (e: React.FormEvent) => {
     e.preventDefault();
