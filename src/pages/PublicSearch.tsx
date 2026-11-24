@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, getPackages, addResident, updateResident, subscribeToDataChanges } from '../db/localDb';
+import { ConnectionStatusBadge } from '../components/ConnectionStatusBadge';
 import { Resident, Package } from '../types';
 import { 
   Search, 
@@ -319,8 +320,8 @@ export default function PublicSearch() {
       }
 
       setIsModalOpen(false);
-    } catch (err) {
-      toast.error('Erro ao salvar cadastro.');
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar cadastro.');
     } finally {
       setIsSaving(false);
     }
@@ -428,8 +429,9 @@ export default function PublicSearch() {
                 </p>
               </div>
 
-              {/* Link de Acesso Restrito da Portaria */}
-              <div className="text-center pt-0.5 border-t border-gray-100">
+              {/* Link de Acesso Restrito da Portaria e Status */}
+              <div className="text-center pt-0.5 border-t border-gray-100 flex items-center justify-between px-1">
+                <ConnectionStatusBadge className="scale-90 origin-left" />
                 <a 
                   href="/admin/login" 
                   className="inline-flex items-center gap-1 text-[clamp(9px,0.7vw,11px)] font-semibold text-gray-400 hover:text-emerald-700 transition"
@@ -504,9 +506,10 @@ export default function PublicSearch() {
                 </p>
               </div>
 
-              <div className="text-center pt-1 border-t border-gray-100">
+              <div className="text-center pt-1 border-t border-gray-100 flex items-center justify-between px-1">
+                <ConnectionStatusBadge />
                 <a href="/admin/login" className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-emerald-700">
-                  <Lock size={12} /> Acesso Restrito da Portaria
+                  <Lock size={12} /> Acesso Restrito
                 </a>
               </div>
             </div>

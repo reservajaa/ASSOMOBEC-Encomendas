@@ -9,6 +9,7 @@ import ManageResidents from './pages/admin/ManageResidents';
 import Settings from './pages/admin/Settings';
 import { Package, LogOut, Search, UserRound, LayoutDashboard, History, Settings as SettingsIcon } from 'lucide-react';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { ConnectionStatusBadge } from './components/ConnectionStatusBadge';
 import toast, { Toaster } from 'react-hot-toast';
 import { useEffect, useState } from 'react';
 import { getResidents, subscribeToDataChanges, subscribeToNewResident, playNotificationSound } from './db/localDb';
@@ -184,6 +185,9 @@ function AdminLayout() {
            <img src="/logo_assomobec.png" alt="Logo" className="h-14 w-auto mb-2 bg-white rounded-2xl p-1 shadow-sm" />
            <h1 className="text-lg font-bold text-center leading-tight tracking-wide">ASSOMOBEC</h1>
            <p className="text-emerald-200 text-[11px] text-center mt-0.5">Camarão Dumas Adjacências</p>
+           <div className="mt-2">
+             <ConnectionStatusBadge className="bg-emerald-950/70 text-emerald-200 border-emerald-600/40" />
+           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto hide-scrollbar">
           <Link to="/admin/dashboard" className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${isActive('/admin/dashboard') ? 'bg-emerald-700 font-bold shadow-sm' : 'hover:bg-emerald-700/70'}`}>
@@ -250,9 +254,12 @@ function AdminLayout() {
                  <span className="text-[10px] text-emerald-200 uppercase tracking-wider font-semibold">Painel Admin</span>
               </div>
            </div>
-           <button onClick={logout} className="p-2 bg-orange-600 hover:bg-orange-700 rounded-full transition shadow-md">
-             <LogOut size={18} />
-           </button>
+           <div className="flex items-center gap-2">
+             <ConnectionStatusBadge className="bg-emerald-950/70 text-emerald-200 border-emerald-600/40" />
+             <button onClick={logout} className="p-2 bg-orange-600 hover:bg-orange-700 rounded-full transition shadow-md">
+               <LogOut size={18} />
+             </button>
+           </div>
         </header>
 
         {/* Mobile Navigation */}

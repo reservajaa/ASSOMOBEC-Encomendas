@@ -4,7 +4,7 @@ import { User, Resident, Package } from '../types';
 const LOCAL_STORAGE_RESIDENTS_KEY = 'assomobec_residents_cache';
 const LOCAL_STORAGE_PACKAGES_KEY = 'assomobec_packages_cache';
 
-// Utilitários de armazenamento local
+// Utilitários de armazenamento local (cache offline)
 function getLocalResidents(): Resident[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_RESIDENTS_KEY);
@@ -36,7 +36,35 @@ function setLocalPackages(packages: Package[]) {
 }
 
 // =========================================================================
-// CACHE EM MEMÓRIA GLOBAL (ZERO DELAY / 0 MILISSEGUNDOS)
+// CONTROLE DE STATUS DE CONEXÃO EM TEMPO REAL
+// =========================================================================
+export type ConnectionStatus = 'online' | 'reconnecting' | 'offline';
+let currentConnectionStatus: ConnectionStatus = typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'online';
+const connectionListeners: Set<(status: ConnectionStatus) => void> = new Set();
+
+export function getConnectionStatus(): ConnectionStatus {
+  return currentConnectionStatus;
+}
+
+export function subscribeToConnectionStatus(listener: (status: ConnectionStatus) => void): () => void {
+  connectionListeners.add(listener);
+  try { listener(currentConnectionStatus); } catch (e) {}
+  return () => {
+    connectionListeners.delete(listener);
+  };
+}
+
+function setConnectionStatus(status: ConnectionStatus) {
+  if (currentConnectionStatus !== status) {
+    currentConnectionStatus = status;
+    connectionListeners.forEach(fn => {
+      try { fn(status); } catch (e) {}
+    });
+  }
+}
+
+// =========================================================================
+// CACHE EM MEMÓRIA GLOBAL (Rápido e sempre sincronizado com o banco online)
 // =========================================================================
 let memoryResidents: Resident[] = getLocalResidents();
 let memoryPackages: Package[] = getLocalPackages();
@@ -150,6 +178,17 @@ if (typeof window !== 'undefined') {
       });
     }
   });
+
+  // Monitoramento nativo de rede do navegador
+  window.addEventListener('online', () => {
+    setConnectionStatus('online');
+    syncResidentsBackground();
+    syncPackagesBackground();
+  });
+
+  window.addEventListener('offline', () => {
+    setConnectionStatus('offline');
+  });
 }
 
 export function subscribeToDataChanges(listener: DataChangeListener): () => void {
@@ -166,22 +205,21 @@ function notifyDataChanges() {
     } catch (e) {}
   });
 
-  // Notifica outras abas abertas no navegador
   try {
     syncChannel?.postMessage({ type: 'sync', timestamp: Date.now() });
   } catch (e) {}
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 8000): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeoutMs))
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Tempo limite excedido na comunicação com o banco online.')), timeoutMs))
   ]);
 }
 
 // Sincronização em background de Moradores
 let isSyncingResidents = false;
-async function syncResidentsBackground() {
+export async function syncResidentsBackground(): Promise<void> {
   if (isSyncingResidents) return;
   isSyncingResidents = true;
   try {
@@ -190,10 +228,21 @@ async function syncResidentsBackground() {
         .from('residents')
         .select('*')
         .order('name', { ascending: true }),
-      4000
+      6000
     );
 
-    if (!error && data && Array.isArray(data)) {
+    if (error) {
+      console.warn('[syncResidentsBackground] Aviso:', error.message);
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setConnectionStatus('offline');
+      } else {
+        setConnectionStatus('reconnecting');
+      }
+      return;
+    }
+
+    if (data && Array.isArray(data)) {
+      setConnectionStatus('online');
       const residents: Resident[] = data.map((item: any) => ({
         id: String(item.id),
         name: item.name,
@@ -204,22 +253,22 @@ async function syncResidentsBackground() {
         createdAt: Number(item.createdAt || item.created_at || Date.now())
       }));
 
-      // Só sobrescreve se o Supabase trouxe dados,
-      // OU se a memória local também está vazia
-      // (evita apagar cadastros locais não sincronizados ainda)
-      if (residents.length > 0 || memoryResidents.length === 0) {
-        // Detecta novo morador recém-cadastrado (últimos 5 minutos) que não estava em memória
-        const knownIds = new Set(memoryResidents.map(r => r.id));
-        const newlyAdded = residents.filter(r => !knownIds.has(r.id) && (Date.now() - r.createdAt < 5 * 60 * 1000));
+      // Detecta novos moradores recém-cadastrados (últimos 5 minutos) para notificação sonora e visual
+      const knownIds = new Set(memoryResidents.map(r => r.id));
+      const newlyAdded = residents.filter(r => !knownIds.has(r.id) && (Date.now() - r.createdAt < 5 * 60 * 1000));
 
-        memoryResidents = residents;
-        setLocalResidents(residents);
-        notifyDataChanges();
+      memoryResidents = residents;
+      setLocalResidents(residents);
+      notifyDataChanges();
 
-        newlyAdded.forEach(r => notifyNewResident(r));
-      }
+      newlyAdded.forEach(r => notifyNewResident(r));
     }
   } catch (err) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setConnectionStatus('offline');
+    } else {
+      setConnectionStatus('reconnecting');
+    }
   } finally {
     isSyncingResidents = false;
   }
@@ -227,7 +276,7 @@ async function syncResidentsBackground() {
 
 // Sincronização em background de Encomendas
 let isSyncingPackages = false;
-async function syncPackagesBackground() {
+export async function syncPackagesBackground(): Promise<void> {
   if (isSyncingPackages) return;
   isSyncingPackages = true;
   try {
@@ -235,10 +284,16 @@ async function syncPackagesBackground() {
       supabase
         .from('packages')
         .select('*'),
-      4000
+      6000
     );
 
-    if (!error && data && Array.isArray(data)) {
+    if (error) {
+      console.warn('[syncPackagesBackground] Aviso:', error.message);
+      return;
+    }
+
+    if (data && Array.isArray(data)) {
+      setConnectionStatus('online');
       const pkgs: Package[] = data.map((item: any) => ({
         id: String(item.id),
         residentId: item.residentId || item.resident_id,
@@ -255,7 +310,6 @@ async function syncPackagesBackground() {
         deliveredBy: item.deliveredBy || item.delivered_by || undefined
       }));
 
-      // Ordenar mais recentes primeiro
       pkgs.sort((a, b) => b.registeredAt - a.registeredAt);
 
       memoryPackages = pkgs;
@@ -272,15 +326,15 @@ async function syncPackagesBackground() {
 syncResidentsBackground();
 syncPackagesBackground();
 
-// Sincronização periódica em background (a cada 4s) e Supabase Realtime para múltiplos dispositivos
+// Sincronização periódica em background (a cada 5s) e Supabase Realtime para múltiplos dispositivos
 if (typeof window !== 'undefined') {
   setInterval(() => {
     syncResidentsBackground();
     syncPackagesBackground();
-  }, 4000);
+  }, 5000);
 
   try {
-    supabase
+    const realtimeChannel = supabase
       .channel('public_realtime_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, () => {
         syncPackagesBackground();
@@ -300,15 +354,26 @@ if (typeof window !== 'undefined') {
         }
         syncResidentsBackground();
       })
-      .subscribe();
-  } catch (e) {}
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('online');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setConnectionStatus('reconnecting');
+        } else if (status === 'CLOSED') {
+          setConnectionStatus('offline');
+        }
+      });
+  } catch (e) {
+    console.error('[Supabase Realtime] Falha ao assinar canal:', e);
+  }
 }
 
 // ==========================================
-// MORADORES (RESIDENTS) - 0ms
+// MORADORES (RESIDENTS) - 100% ONLINE E SINCRONIZADO
 // ==========================================
 
 export async function getResidents(): Promise<Resident[]> {
+  // Dispara sincronização em segundo plano para garantir frescor
   syncResidentsBackground();
 
   if (memoryResidents.length > 0) {
@@ -316,8 +381,34 @@ export async function getResidents(): Promise<Resident[]> {
   }
 
   const local = getLocalResidents();
-  memoryResidents = local;
-  return [...local].sort((a, b) => a.name.localeCompare(b.name));
+  if (local.length > 0) {
+    memoryResidents = local;
+    return [...local].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Se não há dados locais, aguarda a resposta direta do Supabase
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('residents').select('*').order('name', { ascending: true }),
+      5000
+    );
+    if (!error && data) {
+      const residents: Resident[] = data.map((item: any) => ({
+        id: String(item.id),
+        name: item.name,
+        cpf: item.cpf || undefined,
+        phone: item.phone || undefined,
+        photoUrl: item.photoUrl || item.photo_url || undefined,
+        address: item.address || undefined,
+        createdAt: Number(item.createdAt || item.created_at || Date.now())
+      }));
+      memoryResidents = residents;
+      setLocalResidents(residents);
+      return residents;
+    }
+  } catch (e) {}
+
+  return [];
 }
 
 export interface AddResidentInput {
@@ -335,8 +426,6 @@ export async function addResident(
   maybePhotoUrl?: string,
   maybePhone?: string
 ): Promise<Resident> {
-  const newId = 'res_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-  
   let name = '';
   let cpf: string | undefined;
   let phone: string | undefined;
@@ -357,6 +446,23 @@ export async function addResident(
     address = inputOrName.address?.trim() || undefined;
   }
 
+  // 1. Validação de dados
+  if (!name || name.length < 2) {
+    throw new Error('Por favor, informe o nome do morador.');
+  }
+
+  // 2. Prevenção de duplicidade por CPF
+  if (cpf) {
+    const cleanCpf = cpf.replace(/\D/g, '');
+    if (cleanCpf.length === 11) {
+      const existing = memoryResidents.find(r => r.cpf && r.cpf.replace(/\D/g, '') === cleanCpf);
+      if (existing) {
+        throw new Error(`Já existe um morador cadastrado com este CPF (${existing.name}).`);
+      }
+    }
+  }
+
+  const newId = 'res_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
   const newResident: Resident = {
     id: newId,
     name,
@@ -367,13 +473,6 @@ export async function addResident(
     createdAt: Date.now()
   };
 
-  // 1. Atualiza memória e LocalStorage imediatamente (0ms)
-  memoryResidents.push(newResident);
-  setLocalResidents(memoryResidents);
-  notifyDataChanges();
-  notifyNewResident(newResident);
-
-  // 2. Envia ao Supabase AGUARDANDO confirmação (para garantir persistência)
   const insertPayload = {
     id: newResident.id,
     name: newResident.name,
@@ -384,38 +483,24 @@ export async function addResident(
     createdAt: newResident.createdAt
   };
 
-  // Tenta salvar no Supabase (com 2 tentativas)
-  let saved = false;
-  for (let attempt = 0; attempt < 2 && !saved; attempt++) {
-    try {
-      const { error } = await withTimeout(
-        supabase.from('residents').insert([insertPayload]),
-        6000
-      );
-      if (!error) {
-        saved = true;
-      } else {
-        console.error('[addResident] Supabase insert error:', error);
-      }
-    } catch (e) {
-      console.error('[addResident] Insert attempt', attempt + 1, 'failed:', e);
-    }
+  // 3. GRAVAÇÃO OBRIGATÓRIA NO BANCO CENTRALIZADO ONLINE COM CONFIRMAÇÃO
+  const { error } = await withTimeout(
+    supabase.from('residents').insert([insertPayload]),
+    8000
+  );
+
+  if (error) {
+    console.error('[addResident] Erro ao gravar morador no Supabase:', error);
+    setConnectionStatus('reconnecting');
+    throw new Error(`Falha ao salvar no banco online: ${error.message || 'Verifique sua conexão e tente novamente.'}`);
   }
 
-  // 3. Se não salvou, agenda retentativa final em background
-  if (!saved) {
-    setTimeout(async () => {
-      try {
-        await supabase.from('residents').upsert([insertPayload]);
-      } catch (e) {}
-    }, 3000);
-  }
-
-  // 4. Força re-sincronização do Supabase para garantir consistência
-  setTimeout(() => {
-    isSyncingResidents = false;
-    syncResidentsBackground();
-  }, 1000);
+  // 4. Somente após confirmação do banco, atualiza o cache e dispara notificações
+  setConnectionStatus('online');
+  memoryResidents.push(newResident);
+  setLocalResidents(memoryResidents);
+  notifyDataChanges();
+  notifyNewResident(newResident);
 
   return newResident;
 }
@@ -441,6 +526,24 @@ export async function updateResident(
     if (updates.name) updates.name = updates.name.toUpperCase().trim();
   }
 
+  const payload: any = {};
+  if (updates.name !== undefined) payload.name = updates.name;
+  if (updates.cpf !== undefined) payload.cpf = updates.cpf || null;
+  if (updates.phone !== undefined) payload.phone = updates.phone || null;
+  if (updates.photoUrl !== undefined) payload.photoUrl = updates.photoUrl || null;
+  if (updates.address !== undefined) payload.address = updates.address || null;
+
+  // Atualiza no Supabase e aguarda confirmação
+  const { error } = await withTimeout(
+    supabase.from('residents').update(payload).eq('id', id),
+    8000
+  );
+
+  if (error) {
+    console.error('[updateResident] Erro no Supabase:', error);
+    throw new Error(`Falha ao atualizar morador no banco online: ${error.message}`);
+  }
+
   const index = memoryResidents.findIndex(r => r.id === id);
   if (index !== -1) {
     memoryResidents[index] = {
@@ -450,41 +553,27 @@ export async function updateResident(
     setLocalResidents(memoryResidents);
     notifyDataChanges();
   }
-
-  (async () => {
-    try {
-      const payload: any = {};
-      if (updates.name !== undefined) payload.name = updates.name;
-      if (updates.cpf !== undefined) payload.cpf = updates.cpf || null;
-      if (updates.phone !== undefined) payload.phone = updates.phone || null;
-      if (updates.photoUrl !== undefined) payload.photoUrl = updates.photoUrl || null;
-      if (updates.address !== undefined) payload.address = updates.address || null;
-
-      await withTimeout(
-        supabase.from('residents').update(payload).eq('id', id),
-        4000
-      );
-    } catch (e) {}
-  })();
 }
 
 export async function deleteResident(id: string): Promise<void> {
+  // Exclui no Supabase e aguarda confirmação
+  const { error } = await withTimeout(
+    supabase.from('residents').delete().eq('id', id),
+    8000
+  );
+
+  if (error) {
+    console.error('[deleteResident] Erro no Supabase:', error);
+    throw new Error(`Falha ao excluir morador no banco online: ${error.message}`);
+  }
+
   memoryResidents = memoryResidents.filter(r => r.id !== id);
   setLocalResidents(memoryResidents);
   notifyDataChanges();
-
-  (async () => {
-    try {
-      await withTimeout(
-        supabase.from('residents').delete().eq('id', id),
-        4000
-      );
-    } catch (e) {}
-  })();
 }
 
 // ==========================================
-// ENCOMENDAS (PACKAGES) - 0ms
+// ENCOMENDAS (PACKAGES) - 100% ONLINE E SINCRONIZADO
 // ==========================================
 
 export async function getPackages(): Promise<Package[]> {
@@ -495,8 +584,40 @@ export async function getPackages(): Promise<Package[]> {
   }
 
   const local = getLocalPackages();
-  memoryPackages = local;
-  return [...local];
+  if (local.length > 0) {
+    memoryPackages = local;
+    return [...local];
+  }
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('packages').select('*'),
+      5000
+    );
+    if (!error && data) {
+      const pkgs: Package[] = data.map((item: any) => ({
+        id: String(item.id),
+        residentId: item.residentId || item.resident_id,
+        photoDataUrl: item.photoDataUrl || item.photo_data_url || undefined,
+        description: item.description || undefined,
+        carrier: item.carrier || undefined,
+        observations: item.observations || undefined,
+        recipientCpf: item.recipientCpf || item.recipient_cpf || undefined,
+        storageLocation: item.storageLocation || item.storage_location || undefined,
+        registeredAt: Number(item.registeredAt || item.registered_at || Date.now()),
+        registeredBy: item.registeredBy || item.registered_by || 'Administrador',
+        status: item.status || 'pending',
+        deliveredAt: item.deliveredAt || item.delivered_at ? Number(item.deliveredAt || item.delivered_at) : undefined,
+        deliveredBy: item.deliveredBy || item.delivered_by || undefined
+      }));
+      pkgs.sort((a, b) => b.registeredAt - a.registeredAt);
+      memoryPackages = pkgs;
+      setLocalPackages(pkgs);
+      return pkgs;
+    }
+  } catch (e) {}
+
+  return [];
 }
 
 export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
@@ -506,54 +627,58 @@ export async function addPackage(pkg: Omit<Package, 'id'>): Promise<Package> {
     id: newId
   };
 
+  const payload: any = {
+    id: newPackage.id,
+    residentId: newPackage.residentId,
+    photoDataUrl: newPackage.photoDataUrl || null,
+    description: newPackage.description || null,
+    carrier: newPackage.carrier || null,
+    observations: newPackage.observations || null,
+    recipientCpf: newPackage.recipientCpf || null,
+    storageLocation: newPackage.storageLocation || null,
+    registeredAt: newPackage.registeredAt,
+    registeredBy: newPackage.registeredBy,
+    status: newPackage.status,
+    deliveredAt: newPackage.deliveredAt || null,
+    deliveredBy: newPackage.deliveredBy || null
+  };
+
+  // GRAVAÇÃO OBRIGATÓRIA NO SUPABASE COM CONFIRMAÇÃO
+  const { error } = await withTimeout(
+    supabase.from('packages').insert([payload]),
+    10000
+  );
+
+  if (error) {
+    console.error('[addPackage] Erro ao gravar encomenda no Supabase:', error);
+    setConnectionStatus('reconnecting');
+    throw new Error(`Falha ao registrar encomenda no banco online: ${error.message || 'Verifique a conexão.'}`);
+  }
+
+  setConnectionStatus('online');
   memoryPackages.unshift(newPackage);
   setLocalPackages(memoryPackages);
   notifyDataChanges();
-
-  (async () => {
-    try {
-      const payload: any = {
-        id: newPackage.id,
-        residentId: newPackage.residentId,
-        photoDataUrl: newPackage.photoDataUrl || null,
-        description: newPackage.description || null,
-        carrier: newPackage.carrier || null,
-        observations: newPackage.observations || null,
-        recipientCpf: newPackage.recipientCpf || null,
-        storageLocation: newPackage.storageLocation || null,
-        registeredAt: newPackage.registeredAt,
-        registeredBy: newPackage.registeredBy,
-        status: newPackage.status,
-        deliveredAt: newPackage.deliveredAt || null,
-        deliveredBy: newPackage.deliveredBy || null
-      };
-
-      const { error } = await withTimeout(
-        supabase.from('packages').insert([payload]),
-        4000
-      );
-
-      // Se a coluna storageLocation não existir no Supabase, tenta salvar sem a coluna e anexa nas observações
-      if (error && error.message && error.message.includes('storageLocation')) {
-        delete payload.storageLocation;
-        if (newPackage.storageLocation) {
-          payload.observations = payload.observations 
-            ? `[Local: ${newPackage.storageLocation}] ${payload.observations}`
-            : `[Local: ${newPackage.storageLocation}]`;
-        }
-        await withTimeout(
-          supabase.from('packages').insert([payload]),
-          4000
-        );
-      }
-    } catch (e) {}
-  })();
 
   return newPackage;
 }
 
 export async function updatePackageStatus(id: string, status: 'delivered', deliveredBy: string): Promise<void> {
   const deliveredAt = Date.now();
+
+  const { error } = await withTimeout(
+    supabase.from('packages').update({
+      status,
+      deliveredAt,
+      deliveredBy
+    }).eq('id', id),
+    8000
+  );
+
+  if (error) {
+    console.error('[updatePackageStatus] Erro no Supabase:', error);
+    throw new Error(`Falha ao dar baixa na encomenda no banco online: ${error.message}`);
+  }
 
   const index = memoryPackages.findIndex(p => p.id === id);
   if (index !== -1) {
@@ -563,19 +688,6 @@ export async function updatePackageStatus(id: string, status: 'delivered', deliv
     setLocalPackages(memoryPackages);
     notifyDataChanges();
   }
-
-  (async () => {
-    try {
-      await withTimeout(
-        supabase.from('packages').update({
-          status,
-          deliveredAt,
-          deliveredBy
-        }).eq('id', id),
-        4000
-      );
-    } catch (e) {}
-  })();
 }
 
 export async function getPackagesByResident(residentId: string): Promise<Package[]> {
@@ -585,19 +697,19 @@ export async function getPackagesByResident(residentId: string): Promise<Package
 }
 
 export async function clearAllPackages(): Promise<void> {
+  const { error } = await withTimeout(
+    supabase.from('packages').delete().neq('id', 'placeholder_never_match_xyz'),
+    8000
+  );
+
+  if (error) {
+    console.error('[clearAllPackages] Erro no Supabase:', error);
+    throw new Error(`Falha ao limpar encomendas no banco online: ${error.message}`);
+  }
+
   memoryPackages = [];
   setLocalPackages([]);
   notifyDataChanges();
-
-  try {
-    // Apaga do Supabase (todas as linhas com id não nulo)
-    await withTimeout(
-      supabase.from('packages').delete().neq('id', 'placeholder_never_match_xyz'),
-      6000
-    );
-  } catch (e) {
-    console.error('[clearAllPackages] Erro ao apagar pacotes do Supabase:', e);
-  }
 }
 
 // --- Auth ---

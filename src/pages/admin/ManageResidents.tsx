@@ -139,8 +139,8 @@ export default function ManageResidents() {
       });
 
       toast.success('Morador cadastrado com sucesso!');
-    } catch (e) {
-      toast.error('Erro ao cadastrar morador.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao cadastrar morador.');
     } finally {
       setIsAdding(false);
     }
