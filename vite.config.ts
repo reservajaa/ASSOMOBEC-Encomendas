@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 import {defineConfig} from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -35,6 +36,16 @@ export default defineConfig(() => {
           enabled: false,
         },
       }),
+      {
+        name: 'spa-fallback-200',
+        closeBundle() {
+          const indexPath = path.resolve(__dirname, 'dist/index.html');
+          const fallbackPath = path.resolve(__dirname, 'dist/200.html');
+          if (fs.existsSync(indexPath)) {
+            fs.copyFileSync(indexPath, fallbackPath);
+          }
+        },
+      },
     ],
     resolve: {
       alias: {
