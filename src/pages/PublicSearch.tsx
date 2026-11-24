@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getResidents, getPackages, addResident, updateResident, subscribeToDataChanges } from '../db/localDb';
 import { ConnectionStatusBadge } from '../components/ConnectionStatusBadge';
+import { saveResidentSession, loadSavedResidentSession, clearResidentSession } from '../lib/residentSession';
 import { Resident, Package } from '../types';
 import { 
   Search, 
@@ -20,7 +21,8 @@ import {
   Boxes, 
   UserCheck, 
   Truck,
-  Lock
+  Lock,
+  UserX
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -90,6 +92,12 @@ export default function PublicSearch() {
   const [allPackages, setAllPackages] = useState<Package[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
 
+  // Funcionalidade: Salvar Conta (Sessão Segura do Morador com Web Crypto)
+  const [saveAccount, setSaveAccount] = useState<boolean>(true);
+  const [hasSavedAccount, setHasSavedAccount] = useState<boolean>(false);
+  const [savedAccountName, setSavedAccountName] = useState<string>('');
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+
   // Modal de cadastro/edição de morador
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -111,6 +119,23 @@ export default function PublicSearch() {
     const unsubscribe = subscribeToDataChanges(() => {
       loadData();
     });
+
+    // Carrega conta salva com segurança neste dispositivo
+    const initSavedSession = async () => {
+      try {
+        const session = await loadSavedResidentSession();
+        if (session && session.cpf) {
+          setSearchTerm(formatCpf(session.cpf));
+          setSaveAccount(true);
+          setHasSavedAccount(true);
+          setSavedAccountName(session.name || '');
+        }
+      } catch (e) {
+        console.warn('Erro ao carregar sessão do morador:', e);
+      }
+    };
+    initSavedSession();
+
     return () => unsubscribe();
   }, []);
 
@@ -152,47 +177,63 @@ export default function PublicSearch() {
   };
 
   const executeCpfSearch = async (digits: string, formatted: string) => {
-    if (digits.length !== 11) return;
+    if (digits.length !== 11) {
+      toast.error('Por favor, digite o CPF completo com todos os 11 dígitos.');
+      return;
+    }
 
-    const matched = residents.find(r => (r.cpf || '').replace(/\D/g, '') === digits);
-    const pkgs = await fetchPackagesForResidentOrCpf(matched ? matched.id : '', digits);
+    setIsSearching(true);
+    try {
+      const currentResidents = await getResidents();
+      const matched = currentResidents.find(r => (r.cpf || '').replace(/\D/g, '') === digits);
+      const pkgs = await fetchPackagesForResidentOrCpf(matched ? matched.id : '', digits);
 
-    if (matched) {
-      setSelectedResident(matched);
-      setPackages(pkgs);
-      setSearchTerm('');
-      toast.success(`Bem-vindo(a), ${matched.name}!`);
-    } else {
-      const unregResident: Resident = {
-        id: 'unregistered_' + digits,
-        name: 'Morador Não Cadastrado',
-        cpf: formatted,
-        phone: '',
-        address: '',
-        photoUrl: '',
-        createdAt: Date.now()
-      };
+      if (matched) {
+        setSelectedResident(matched);
+        setPackages(pkgs);
 
-      setSelectedResident(unregResident);
-      setPackages(pkgs);
-      setSearchTerm('');
+        // Se SALVAR CONTA estiver marcada, guarda identificação criptografada
+        if (saveAccount) {
+          await saveResidentSession(digits, matched.id, matched.name);
+          setHasSavedAccount(true);
+          setSavedAccountName(matched.name);
+        } else {
+          clearResidentSession();
+          setHasSavedAccount(false);
+          setSavedAccountName('');
+        }
 
-      // Abre compulsoriamente a tela de cadastro para o novo morador
-      handleOpenEditResident(unregResident);
-      toast.error('⚠️ ATENÇÃO: Seu CPF não está cadastrado! Conclua seu cadastro obrigatório abaixo.', {
-        duration: 6000,
-      });
+        toast.success(`Bem-vindo(a), ${matched.name}!`);
+      } else {
+        const unregResident: Resident = {
+          id: 'unregistered_' + digits,
+          name: 'Morador Não Cadastrado',
+          cpf: formatted,
+          phone: '',
+          address: '',
+          photoUrl: '',
+          createdAt: Date.now()
+        };
+
+        setSelectedResident(unregResident);
+        setPackages(pkgs);
+
+        // Abre compulsoriamente a tela de cadastro para o novo morador
+        handleOpenEditResident(unregResident);
+        toast.error('⚠️ ATENÇÃO: Seu CPF não está cadastrado! Conclua seu cadastro obrigatório abaixo.', {
+          duration: 6000,
+        });
+      }
+    } catch (err) {
+      toast.error('Erro ao consultar banco de dados. Verifique sua conexão.');
+    } finally {
+      setIsSearching(false);
     }
   };
 
   const handleCpfInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCpf(e.target.value);
     setSearchTerm(formatted);
-    const digits = formatted.replace(/\D/g, '');
-
-    if (digits.length === 11) {
-      executeCpfSearch(digits, formatted);
-    }
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -203,6 +244,19 @@ export default function PublicSearch() {
       return;
     }
     executeCpfSearch(digits, searchTerm);
+  };
+
+  const handleForgetAccount = () => {
+    clearResidentSession();
+    setHasSavedAccount(false);
+    setSavedAccountName('');
+    setSearchTerm('');
+    setSaveAccount(false);
+    setSelectedResident(null);
+    toast.success('Conta removida deste dispositivo. Agora você pode informar outro CPF.');
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
   };
 
   const handleSelectResident = async (resident: Resident) => {
@@ -315,6 +369,12 @@ export default function PublicSearch() {
           address: fullAddress || undefined
         });
 
+        if (saveAccount && created.cpf) {
+          await saveResidentSession(created.cpf.replace(/\D/g, ''), created.id, created.name);
+          setHasSavedAccount(true);
+          setSavedAccountName(created.name);
+        }
+
         toast.success('Cadastro realizado com sucesso! Seus dados já estão salvos.');
         handleSelectResident(created);
       }
@@ -375,10 +435,22 @@ export default function PublicSearch() {
               </div>
 
               {/* Campo de CPF — 100% Nativo com Placeholder Único e Lupa Centralizada */}
-              <form onSubmit={handleSearchSubmit} className="space-y-1">
-                <label className="block text-[clamp(9px,0.7vw,11px)] font-black text-gray-700 uppercase tracking-wider text-left">
-                  DIGITE SEU CPF
-                </label>
+              <form onSubmit={handleSearchSubmit} className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[clamp(9px,0.7vw,11px)] font-black text-gray-700 uppercase tracking-wider text-left">
+                    DIGITE SEU CPF
+                  </label>
+                  {hasSavedAccount && (
+                    <button
+                      type="button"
+                      onClick={handleForgetAccount}
+                      className="text-[clamp(9px,0.7vw,11px)] font-bold text-red-600 hover:text-red-700 hover:underline transition flex items-center gap-1 cursor-pointer"
+                      title="Remover conta salva deste aparelho"
+                    >
+                      <UserX size={11} /> Trocar Conta
+                    </button>
+                  )}
+                </div>
 
                 <div className="relative flex items-center">
                   {/* Ícone de Busca Perfeitamente Centralizado Verticalmente */}
@@ -396,16 +468,55 @@ export default function PublicSearch() {
                     onChange={handleCpfInputChange}
                     autoFocus
                     placeholder="000.000.000-00"
-                    className="w-full pl-10 pr-3 py-2.5 lg:py-3 rounded-xl border-2 border-emerald-300 focus:border-emerald-600 focus:bg-white bg-emerald-50/40 text-[clamp(12px,1.1vw,17px)] font-bold text-gray-900 tracking-wider text-left outline-none transition shadow-inner placeholder:text-gray-400 placeholder:font-normal"
+                    className="w-full pl-10 pr-3 py-2 lg:py-2.5 rounded-xl border-2 border-emerald-300 focus:border-emerald-600 focus:bg-white bg-emerald-50/40 text-[clamp(12px,1.1vw,16px)] font-bold text-gray-900 tracking-wider text-left outline-none transition shadow-inner placeholder:text-gray-400 placeholder:font-normal"
                   />
                 </div>
 
                 {/* Indicador de Dígitos Restantes */}
                 {searchTerm.replace(/\D/g, '').length > 0 && searchTerm.replace(/\D/g, '').length < 11 && (
-                  <p className="text-[clamp(9px,0.75vw,11px)] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-0.5 px-2 text-center">
+                  <p className="text-[clamp(8px,0.7vw,10px)] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-0.5 px-2 text-center">
                     Faltam {11 - searchTerm.replace(/\D/g, '').length} número{11 - searchTerm.replace(/\D/g, '').length > 1 ? 's' : ''}
                   </p>
                 )}
+
+                {/* Caixa de Seleção: SALVAR CONTA */}
+                <div className="flex items-center justify-between pt-0.5 px-0.5">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none group">
+                    <input
+                      type="checkbox"
+                      checked={saveAccount}
+                      onChange={(e) => setSaveAccount(e.target.checked)}
+                      className="w-3.5 h-3.5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                    />
+                    <span className="text-[clamp(9px,0.72vw,11px)] font-black text-gray-700 group-hover:text-emerald-700 tracking-wide uppercase">
+                      SALVAR CONTA
+                    </span>
+                  </label>
+                  {hasSavedAccount && savedAccountName && (
+                    <span className="text-[clamp(8px,0.65vw,10px)] text-emerald-700 font-bold truncate max-w-[125px]" title={savedAccountName}>
+                      ✓ {savedAccountName}
+                    </span>
+                  )}
+                </div>
+
+                {/* Botão CONSULTAR ENCOMENDAS */}
+                <button
+                  type="submit"
+                  disabled={isSearching}
+                  className="w-full mt-0.5 py-2 lg:py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-[clamp(10px,0.8vw,13px)] rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2 tracking-wider cursor-pointer active:scale-[0.99] uppercase"
+                >
+                  {isSearching ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                      Consultando...
+                    </>
+                  ) : (
+                    <>
+                      <Search size={15} className="stroke-[2.5]" />
+                      CONSULTAR ENCOMENDAS
+                    </>
+                  )}
+                </button>
               </form>
 
               {/* Aviso Amarelo (Associação) */}
@@ -463,10 +574,23 @@ export default function PublicSearch() {
                 <p className="text-xs font-semibold text-gray-500 mt-0.5">Digite seu CPF para ver suas encomendas.</p>
               </div>
 
-              <form onSubmit={handleSearchSubmit} className="space-y-2">
-                <label className="block text-xs font-black text-gray-700 uppercase tracking-wider text-left">
-                  DIGITE SEU CPF
-                </label>
+              <form onSubmit={handleSearchSubmit} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-black text-gray-700 uppercase tracking-wider text-left">
+                    DIGITE SEU CPF
+                  </label>
+                  {hasSavedAccount && (
+                    <button
+                      type="button"
+                      onClick={handleForgetAccount}
+                      className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-1 cursor-pointer"
+                      title="Remover conta salva deste celular"
+                    >
+                      <UserX size={13} /> Trocar Conta
+                    </button>
+                  )}
+                </div>
+
                 <div className="relative flex items-center">
                   <div className="absolute left-3.5 flex items-center pointer-events-none text-emerald-600">
                     <Search size={20} className="stroke-[2.5]" />
@@ -487,6 +611,45 @@ export default function PublicSearch() {
                     Faltam {11 - searchTerm.replace(/\D/g, '').length} número{11 - searchTerm.replace(/\D/g, '').length > 1 ? 's' : ''}
                   </p>
                 )}
+
+                {/* Caixa de Seleção: SALVAR CONTA */}
+                <div className="flex items-center justify-between px-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={saveAccount}
+                      onChange={(e) => setSaveAccount(e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 rounded-md border-gray-300 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                    />
+                    <span className="text-xs font-black text-gray-700 uppercase tracking-wide">
+                      SALVAR CONTA
+                    </span>
+                  </label>
+                  {hasSavedAccount && savedAccountName && (
+                    <span className="text-xs text-emerald-700 font-bold truncate max-w-[170px]" title={savedAccountName}>
+                      ✓ {savedAccountName}
+                    </span>
+                  )}
+                </div>
+
+                {/* Botão CONSULTAR ENCOMENDAS Mobile */}
+                <button
+                  type="submit"
+                  disabled={isSearching}
+                  className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm rounded-2xl shadow-lg transition flex items-center justify-center gap-2 tracking-wider cursor-pointer active:scale-[0.98] uppercase"
+                >
+                  {isSearching ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      Consultando...
+                    </>
+                  ) : (
+                    <>
+                      <Search size={18} className="stroke-[2.5]" />
+                      CONSULTAR ENCOMENDAS
+                    </>
+                  )}
+                </button>
               </form>
 
               <div className="bg-amber-50 border border-amber-300/80 rounded-2xl p-3.5 text-left flex items-start gap-2.5">
@@ -530,7 +693,7 @@ export default function PublicSearch() {
            TELA DE DETALHES DO MORADOR CONSULTADO
            ══════════════════════════════════════════════════════════════════ */
         <div className="w-full min-h-screen bg-[#015946] flex flex-col">
-          <div className="w-full bg-[#015946] px-6 pt-5 pb-3 flex items-center">
+          <div className="w-full bg-[#015946] px-6 pt-5 pb-3 flex items-center justify-between">
             <button 
               onClick={() => {
                 setSelectedResident(null);
@@ -544,6 +707,20 @@ export default function PublicSearch() {
                 ESC
               </span>
             </button>
+
+            {/* Botão Esquecer Conta — visível somente se há conta salva */}
+            {hasSavedAccount && (
+              <button
+                type="button"
+                onClick={handleForgetAccount}
+                className="flex items-center gap-1.5 text-xs font-bold text-rose-200 hover:text-white bg-rose-700/40 hover:bg-rose-700/70 border border-rose-400/40 px-3 py-1.5 rounded-xl transition cursor-pointer"
+                title="Remover conta salva deste dispositivo"
+              >
+                <UserX size={14} />
+                <span className="hidden sm:inline">Esquecer Conta</span>
+                <span className="sm:hidden">Esquecer</span>
+              </button>
+            )}
           </div>
 
           <div className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 pb-10 grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-6 lg:gap-10 items-start">
